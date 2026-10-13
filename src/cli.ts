@@ -27,6 +27,7 @@ import { checkoutRoot, ensureRepoHome, keepsNotes, noteCount, rememberRepo, repo
 import { brand, cmd, graftNotice, strandedRepoNotice, tag } from "./brand.js";
 import { branchDiff } from "./cloud/diff.js";
 import { openBrowser } from "./util/browser.js";
+import { learningsAtBase, teammateEdits, withBaseLearnings } from "./check/learning-edits.js";
 import { contextDirFor } from "./context/node-file.js";
 import { loadGraphCached } from "./graph/load.js";
 import { ensureFreshChildren, ensureFreshGraph, refreshNote } from "./graph/refresh.js";
@@ -2118,14 +2119,19 @@ async function runTeamCheck(repo: string, opts: { base?: string; json?: boolean 
     return;
   }
   const files = d.files.filter((f) => !f.startsWith(".trail/"));
-  if (files.length === 0) {
+  const me = noteAuthor(repo);
+  // Learnings this branch changed, as they were before it: the check reads those,
+  // and changing a teammate's is a finding of its own.
+  const atBase = learningsAtBase(repo, d.from, d.files);
+  const edits = teammateEdits(repo, atBase, me);
+  if (files.length === 0 && edits.length === 0) {
     console.log(`· nothing to check: no changes against ${d.base}`);
     return;
   }
   maybeRefreshBranches(repo);
   if (d.truncated) console.error("⚠ the diff is over 400 KB; only the first 400 KB is checked");
-  const me = noteAuthor(repo);
-  const r = checkLocally({ diff: withoutTrailFiles(d.diff), files, notes: listNotes(repo), skills: listSkills(repo), asker: me });
+  const r = checkLocally({ diff: withoutTrailFiles(d.diff), files, notes: withBaseLearnings(listNotes(repo), atBase), skills: listSkills(repo), asker: me });
+  r.findings.unshift(...edits);
   const sources = r.findings.map((f) => f.source).filter((s) => s.path);
   recordActivity({
     repo: repoPlace(repo).key,

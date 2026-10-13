@@ -199,3 +199,60 @@ test('a remembered install others can write to is ignored', {
   // pointed the file at their own code.
   assert.equal(runShim(root, project(root)), null);
 });
+
+/** Runs the hooks shim for `event` with no install anywhere, as `name`; returns what it printed. */
+function runBare(root: string, projectDir: string, event: string): string {
+  const shimPath = join(root, 'trail-hooks.cjs');
+  writeFileSync(shimPath, hooksShim());
+  const { preload, env } = isolate(root);
+  const res = spawnSync(process.execPath, ['--require', preload, shimPath, event], {
+    encoding: 'utf8',
+    env: { ...process.env, ...env, CLAUDE_PROJECT_DIR: projectDir },
+  });
+  assert.equal(res.status, 0, `shim exited ${res.status}: ${res.stderr}`);
+  return res.stdout;
+}
+
+/** A repo a teammate set trail up in, cloned by someone without trail: learnings, no install. */
+function clonedWithLearnings(root: string, me: string, authors: string[]): string {
+  const p = project(root);
+  spawnSync('git', ['init', '-q'], { cwd: p });
+  spawnSync('git', ['config', 'user.name', me], { cwd: p });
+  mkdirSync(join(p, '.trail', 'learnings'), { recursive: true });
+  authors.forEach((a, i) =>
+    writeFileSync(
+      join(p, '.trail', 'learnings', `2026-10-1${i}-retries-${a.toLowerCase()}.md`),
+      `---\ntitle: "Retries decision ${i}"\nauthor: ${a}\ndate: 2026-10-1${i}\n---\n\n## Decided\n- Keep 4.\n`,
+    ),
+  );
+  return p;
+}
+
+test('without trail anywhere, session start points Claude at the learnings and offers to set trail up', () => {
+  const root = tmpRepo('shim-offer');
+  const repo = clonedWithLearnings(root, 'Kumar S', ['Anirudh']);
+  const out = JSON.parse(runBare(root, repo, 'session-start'));
+  assert.equal(out.hookSpecificOutput.hookEventName, 'SessionStart');
+  const ctx: string = out.hookSpecificOutput.additionalContext;
+  assert.match(ctx, /trail isn't installed on this machine/);
+  assert.match(ctx, /- Retries decision 0 \(Anirudh\) · \.trail\/learnings\/2026-10-10-retries-anirudh\.md/);
+  assert.match(ctx, /"Anirudh shares what Claude learns on this repo through trail\. Want me to set it up\? It checks your changes against their learnings before you commit\."/);
+  assert.match(ctx, /Only if the user says yes, run "npm install -g @trailhq\/trail" and then "trail init --no-agents"/);
+  assert.match(ctx, /never edit them/);
+});
+
+test('the offer names the teammates, not the person asking', () => {
+  const root = tmpRepo('shim-offer-names');
+  const repo = clonedWithLearnings(root, 'Kumar', ['Anirudh', 'Kumar', 'Priya', 'Sam']);
+  const ctx: string = JSON.parse(runBare(root, repo, 'session-start')).hookSpecificOutput.additionalContext;
+  assert.match(ctx, /"Sam, Priya and 1 other share what Claude learns/);
+});
+
+test('without trail, other events and a repo with no learnings stay silent', () => {
+  const root = tmpRepo('shim-offer-quiet');
+  const repo = clonedWithLearnings(root, 'Kumar', ['Anirudh']);
+  assert.equal(runBare(root, repo, 'prompt'), '');
+  assert.equal(runBare(root, repo, 'stop'), '');
+  const empty = tmpRepo('shim-offer-empty');
+  assert.equal(runBare(empty, project(empty), 'session-start'), '');
+});

@@ -48,7 +48,8 @@ for (const [name, src] of [['statusline', statuslineShim()], ['hooks', hooksShim
     assert.match(src, /'package\.json'/); // versionOf reads each candidate's version
 
     // Windows-safe dynamic import + best-effort catch
-    assert.match(src, /pathToFileURL\(entry\(/);
+    assert.match(src, /const target = entry\(/);
+    assert.match(src, /pathToFileURL\(target\)/);
     assert.match(src, /\.catch\(\(\) => \{/);
   });
 }
