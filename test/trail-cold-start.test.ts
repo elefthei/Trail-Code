@@ -124,13 +124,13 @@ test("anything like a credential or an email is scrubbed before a learning is wr
   assert.ok(!out.includes("AKIA"));
 });
 
-test("the closing lines name who works there and the head start, committed or not", () => {
+test("the closing lines name who works there and the faster PR, committed or not", () => {
   assert.equal(PERSONAL_SAVED_LINE, "📝 Saved just for you · stays on this machine, out of the repo");
   const five = commitLines({ cost: { tokens: 48000 } }, ["Anay", "Rushil", "Ritika", "Rohan", "Kumar"]);
-  assert.equal(five.uncommitted, "🌱 Anay, Rushil and 3 others work in this part of the codebase. Commit what you learned and give their agents a 48k-token head start");
-  assert.equal(five.committed, "📝 Committed · Anay, Rushil and 3 others work in this part of the codebase, and their agents now get a 48k-token head start");
-  assert.equal(commitLines({}, [], "repo").uncommitted, "🌱 Commit what you learned and give your teammates' agents a head start");
-  assert.equal(commitLines({}, ["Anay"], "repo").uncommitted, "🌱 Anay works in this repo. Commit what you learned and give their agents a head start");
+  assert.equal(five.uncommitted, "🌱 Anay, Rushil and 3 others work in this part of the codebase. Commit what you learned and their agents get to a PR 3x faster");
+  assert.equal(five.committed, "📝 Committed · Anay, Rushil and 3 others work in this part of the codebase, and their agents now get to a PR 3x faster");
+  assert.equal(commitLines({}, [], "repo").uncommitted, "🌱 Commit what you learned and your teammates' agents get to a PR 3x faster");
+  assert.equal(commitLines({}, ["Anay"], "repo").uncommitted, "🌱 Anay works in this repo. Commit what you learned and their agents get to a PR 3x faster");
   assert.equal(namesLabel(["Anay", "Rushil", "Ritika"]), "Anay, Rushil and Ritika");
 });
 
@@ -240,7 +240,7 @@ test("trail init reads past sessions by itself and saves what came up twice, onc
   assert.match(first.err, /✓ learned 2 things you told Claude more than once, from your last 2 sessions here/);
   assert.match(first.err, /for your team · Run go test with -race before pushing/);
   assert.match(first.err, /just for you  · Say what you understood before building/);
-  assert.match(first.err, /· Claude follows them from your next session\n🌱 Commit what you learned and give your teammates' agents a head start/);
+  assert.match(first.err, /· Claude follows them from your next session\n🌱 Commit what you learned and your teammates' agents get to a PR 3x faster/);
 
   const [file] = readdirSync(join(repo, ".trail", "learnings")).filter((f) => f.endsWith(".md"));
   const team = parseNote(readFileSync(join(repo, ".trail", "learnings", file!), "utf8"), file!)!;

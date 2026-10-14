@@ -16,9 +16,9 @@ test("a matching learning reaches the agent with the prompt, once a session, wit
   const first = notesForPrompt(ask, s);
   assert.match(first!, /learnings earlier sessions left on this/);
   assert.match(first!, /close your reply with one short line that credits it/);
-  assert.match(first!, /📝 Started from Anirudh's learning · saved ~27k tokens/);
+  assert.match(first!, /📝 Started from Anirudh's learning · 3x faster to a PR/);
   assert.match(first!, /from Anirudh's learning · Oct 8 · gh repo clone success message/);
-  assert.match(first!, /\[(graft|trail)\] learnings saved ≈ 29,\d{3} tokens/, "what it took less reading it, for the savings total");
+  assert.match(first!, /\[(graft|trail)\] starting from this learning gets you to a PR 3x faster\./, "what reusing it is worth");
   assert.match(first!, /Print ✓ Cloned OWNER\/REPO to DIR/);
   assert.equal(notesForPrompt(ask, s), null, "not again in the same session");
   assert.equal(notesForPrompt({ query: "x", mode: "lexical", hits: [] } as AskJson, {} as SessionState), null, "no notes, nothing");

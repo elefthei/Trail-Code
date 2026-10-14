@@ -268,14 +268,14 @@ test("trail note saves a learning in .trail/learnings/ to commit, ask shows it t
   const saved = run("trail", ["note", d, "--title", "Bbox coordinates are off on rotated PDFs", "--minutes", "12", "--tokens", "9600"], home, BODY);
   assert.equal(saved.status, 0, saved.err);
   assert.match(saved.out, /^✓ saved for your team · \.trail\/learnings\/\d{4}-\d{2}-\d{2}-bbox-coordinates-are-off-on-rotated-priya\.md$/m);
-  assert.match(saved.out, /this took 12 min and ~9\.6k tokens to figure out\. the next session that touches bbox\.go gets it for ~\d+/);
+  assert.match(saved.out, /· the next session that touches bbox\.go starts from this, and gets to a PR 3x faster/);
   assert.match(
     saved.out,
-    /^🌱 Anay works in this part of the codebase\. Commit what you learned and give their agents a 9\.6k-token head start · git add \.trail\/learnings\/\S+\.md$/m,
+    /^🌱 Anay works in this part of the codebase\. Commit what you learned and their agents get to a PR 3x faster · git add \.trail\/learnings\/\S+\.md$/m,
   );
   assert.match(
     saved.out,
-    /\[trail\] Close your reply with one line, word for word\. If this learning is committed by the end of your turn: 📝 Committed · Anay works in this part of the codebase, and their agents now get a 9\.6k-token head start\n  If it isn't: 🌱 Anay works in this part of the codebase\. Commit what you learned and give their agents a 9\.6k-token head start$/m,
+    /\[trail\] Close your reply with one line, word for word\. If this learning is committed by the end of your turn: 📝 Committed · Anay works in this part of the codebase, and their agents now get to a PR 3x faster\n  If it isn't: 🌱 Anay works in this part of the codebase\. Commit what you learned and their agents get to a PR 3x faster$/m,
     "the closing lines, for the agent's reply",
   );
   const [file] = readdirSync(join(d, ".trail", "learnings")).filter((f) => f.endsWith(".md"));
@@ -292,7 +292,7 @@ test("trail note saves a learning in .trail/learnings/ to commit, ask shows it t
     assert.match(ask.out, /from Priya's learning · \w{3} \d+ · Bbox coordinates are off on rotated PDFs/);
     assert.match(ask.out, /ruled out {3}Rotating the image before OCR/);
     assert.match(ask.out, /\.trail\/learnings\/\d{4}-\d{2}-\d{2}-bbox/);
-    assert.match(ask.out, /\[(trail|graft)\] learnings saved ≈ [\d,]+ tokens/, "what reusing it saved, for the tally");
+    assert.match(ask.out, /\[(trail|graft)\] starting from this learning gets you to a PR 3x faster\./, "what reusing it is worth");
   }
   // Not connected to a workspace: what was searched stays unrecorded, so a later sign-in has nothing old to send.
   assert.equal(existsSync(join(home, ".trail", "outbox.jsonl")), false, "no outbox before connecting");
@@ -372,7 +372,7 @@ test("the session-start directive mentions learnings only in a repo that keeps t
   assert.doesNotMatch(formatOrientation("# map", 100), /learning/);
   const some = formatOrientation("# map", 100, undefined, 3, true);
   assert.match(some, /This repo has 3 learnings from past sessions/);
-  assert.match(some, /📝 Started from Priya's learning · saved ~9k tokens/, "the closing line, by example");
+  assert.match(some, /📝 Started from Priya's learning · 3x faster to a PR/, "the closing line, by example");
   assert.match(some, /save a learning for the next session/);
   assert.match(some, /commit it with the change/);
   const none = formatOrientation("# map", 100, undefined, 0, true);
