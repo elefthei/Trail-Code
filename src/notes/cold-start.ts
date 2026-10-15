@@ -12,7 +12,7 @@
  * more sessions, and counts the sessions itself.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { countBucket, durationBucket } from "../telemetry/contract.js";
@@ -326,9 +326,50 @@ interface RawFinding {
 }
 
 /** Whether `claude` (Claude Code) is on PATH. */
-export function hasClaude(): boolean {
+function claudeOnPath(): boolean {
   const r = spawnSync("claude", ["--version"], { stdio: "ignore", timeout: 10_000 });
   return r.status === 0;
+}
+
+/** `[2, 1, 296]` from `anthropic.claude-code-2.1.296-darwin-arm64`; null for anything else. */
+function extensionVersion(name: string): number[] | null {
+  const m = /^anthropic\.claude-code-(\d+)\.(\d+)\.(\d+)/.exec(name);
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+/**
+ * The Claude Code to run: `claude` on PATH, else a standalone install's copy,
+ * else the newest copy the VS Code, Cursor, VS Code Insiders or Windsurf
+ * extension keeps. Someone who only uses the extension has no `claude` on
+ * PATH, and without this their past sessions are never read. Null when
+ * there's none.
+ */
+export function claudeBin(home: string = homedir(), onPath: () => boolean = claudeOnPath): string | null {
+  if (onPath()) return "claude";
+  const exe = process.platform === "win32" ? "claude.exe" : "claude";
+  for (const p of [join(home, ".local", "bin", exe), join(home, ".claude", "local", exe)]) if (existsSync(p)) return p;
+  const copies: { version: number[]; path: string }[] = [];
+  for (const editor of [".vscode", ".cursor", ".vscode-insiders", ".windsurf"]) {
+    const dir = join(home, editor, "extensions");
+    let names: string[] = [];
+    try {
+      names = readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      const version = extensionVersion(name);
+      const path = join(dir, name, "resources", "native-binary", exe);
+      if (version && existsSync(path)) copies.push({ version, path });
+    }
+  }
+  copies.sort((a, b) => b.version[0]! - a.version[0]! || b.version[1]! - a.version[1]! || b.version[2]! - a.version[2]!);
+  return copies[0]?.path ?? null;
+}
+
+/** Whether there's a Claude Code to run, on PATH or not. */
+export function hasClaude(home?: string): boolean {
+  return claudeBin(home) !== null;
 }
 
 /**
@@ -337,7 +378,7 @@ export function hasClaude(): boolean {
  * shows up as a past session), from a scratch folder so no repo's CLAUDE.md or
  * hooks load. `TRAIL_NO_HOOKS` keeps trail's own user-level hooks quiet too.
  */
-function askClaude(prompt: string, model: string, timeoutMs: number): Promise<{ findings: RawFinding[]; costUsd?: number } | null> {
+function askClaude(bin: string, prompt: string, model: string, timeoutMs: number): Promise<{ findings: RawFinding[]; costUsd?: number } | null> {
   return new Promise((done) => {
     const args = [
       "-p",
@@ -352,7 +393,7 @@ function askClaude(prompt: string, model: string, timeoutMs: number): Promise<{ 
     ];
     let child;
     try {
-      child = spawn("claude", args, { cwd: tmpdir(), env: { ...process.env, TRAIL_NO_HOOKS: "1" }, stdio: ["pipe", "pipe", "ignore"] });
+      child = spawn(bin, args, { cwd: tmpdir(), env: { ...process.env, TRAIL_NO_HOOKS: "1" }, stdio: ["pipe", "pipe", "ignore"] });
     } catch {
       done(null);
       return;
@@ -462,10 +503,12 @@ export async function findLearnings(
   const sessions = opts.sessions ?? pastSessions(repo, opts.home);
   const base = { sessions: sessions.length, read: 0, model, findings: [] as Finding[] };
   if (sessions.length < 2) return { ...base, durationMs: Date.now() - started, reason: "no_sessions" };
-  if (!hasClaude()) return { ...base, durationMs: Date.now() - started, reason: "no_claude" };
+  const bin = claudeBin(opts.home);
+  if (!bin) return { ...base, durationMs: Date.now() - started, reason: "no_claude" };
   const { text, ids } = digest(sessions);
   base.read = ids.size;
   const asked = await askClaude(
+    bin,
     `Past sessions in this repository, newest first. Find what the person had to tell the agent more than once.\n\n${text}`,
     model,
     opts.timeoutMs ?? 180_000,
