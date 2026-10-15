@@ -143,10 +143,18 @@ interface GqlPR {
 
 const isBot = (a: Actor | null | undefined) => a?.__typename === "Bot" || /\[bot\]$/i.test(a?.login ?? "");
 
+/** Drops HTML comments, again until none are left, so `<!<!---->--` can't leave one behind; an unclosed one runs to the end. */
+function dropHtmlComments(s: string): string {
+  for (let prev = ""; prev !== s; ) {
+    prev = s;
+    s = s.replace(/<!--[\s\S]*?-->/g, "");
+  }
+  return s.replace(/<!--[\s\S]*$/, "");
+}
+
 /** A comment as one line for Claude: no HTML comments, no quoted replies, no images, secrets scrubbed. */
 export function reviewWords(raw: string): string | null {
-  let t = raw
-    .replace(/<!--[\s\S]*?-->/g, "")
+  let t = dropHtmlComments(raw)
     .split("\n")
     .filter((l) => !l.trimStart().startsWith(">"))
     .join("\n")

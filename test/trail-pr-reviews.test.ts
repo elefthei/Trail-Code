@@ -89,6 +89,8 @@ test("only reviewers' words count: bots, the PR's author and quoted replies are 
   assert.ok(!prs[2]!.comments[0]!.text.includes("ghp_"));
   assert.equal(reviewWords("> quoted\n\n![shot](https://x/y.png) see this"), "[image] see this");
   assert.equal(reviewWords("<!-- only a marker -->"), null);
+  assert.equal(reviewWords("a <!<!-- x -->-- b --> c"), "a c");
+  assert.equal(reviewWords("keep this <!-- never closed"), "keep this");
 });
 
 test("the digest heads each PR with its number and stops at its size", () => {
