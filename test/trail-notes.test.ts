@@ -372,7 +372,7 @@ test("the session-start directive mentions learnings only in a repo that keeps t
   assert.doesNotMatch(formatOrientation("# map", 100), /learning/);
   const some = formatOrientation("# map", 100, undefined, 3, true);
   assert.match(some, /This repo has 3 learnings from past sessions/);
-  assert.match(some, /📝 Started from Priya's learning · 3x faster to a PR/, "the closing line, by example");
+  assert.match(some, /📝 Started from Priya's learning · saved ~27k tokens and ~4 min, or · 3x faster to a PR when that's what it prints/, "the closing line, by example");
   assert.match(some, /save a learning for the next session/);
   assert.match(some, /commit it with the change/);
   const none = formatOrientation("# map", 100, undefined, 0, true);

@@ -237,7 +237,7 @@ test('without trail anywhere, session start points Claude at the learnings and o
   assert.match(ctx, /trail isn't installed on this machine/);
   assert.match(ctx, /- Retries decision 0 \(Anirudh\) · \.trail\/learnings\/2026-10-10-retries-anirudh\.md/);
   assert.match(ctx, /"Anirudh shares what Claude learns on this repo through trail\. Want me to set it up\? It checks your changes against their learnings before you commit\."/);
-  assert.match(ctx, /Only if the user says yes, run "npm install -g @trailhq\/trail" and then "trail init --no-agents"/);
+  assert.match(ctx, /Only if the user says yes, run "npm install -g @trailhq\/trail-code" and then "trail init --no-agents"/);
   assert.match(ctx, /never edit them/);
 });
 

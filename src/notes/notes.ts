@@ -511,37 +511,87 @@ export function namesLabel(names: string[]): string {
   return `${names[0]}, ${names[1]} and ${names.length - 2} others`;
 }
 
-/** What starting from a teammate's learning is worth, as trail says it everywhere: time to a PR. */
+/** `48k`, `3.8k`, `600`. */
+function tokensShort(n: number): string {
+  return tokensLabel(n).replace(/^~/, "").replace(" tokens", "");
+}
+
+/** What starting from a teammate's learning is worth when its tokens are too few to say: time to a PR. */
 export const PR_SPEEDUP = "3x faster";
+
+/**
+ * Below this many tokens, what a learning saves is too small a number to
+ * impress, so trail credits it as a faster PR instead.
+ */
+export const TOKEN_CREDIT_FLOOR = 10_000;
+
+/** Whether a token count is big enough to be the credit. */
+export function tokensWorthSaying(tokens: number | undefined): boolean {
+  return (tokens ?? 0) >= TOKEN_CREDIT_FLOOR;
+}
 
 /**
  * The lines that close a reply after a team learning is saved, one for each
  * way the turn can end, since only the agent knows whether it committed the
  * learning by then. Uncommitted, it makes the case for committing: who else
- * works on the same files, and that their agents get to a PR faster.
+ * works on the same files, and the head start their agents would get, which
+ * is what the learning took to work out, or a faster PR when that's small.
  */
 export function commitLines(
-  _note: Pick<Note, "cost">,
+  note: Pick<Note, "cost">,
   teammates: string[],
   where: "files" | "repo" = "files",
 ): { committed: string; uncommitted: string } {
+  const tokens = note.cost?.tokens;
+  const start = tokensWorthSaying(tokens) ? `a ${tokensShort(tokens!)}-token head start` : null;
   const place = where === "files" ? "this part of the codebase" : "this repo";
   if (!teammates.length) {
-    return {
-      committed: `📝 Committed · your teammates' agents now get to a PR ${PR_SPEEDUP}`,
-      uncommitted: `🌱 Commit what you learned and your teammates' agents get to a PR ${PR_SPEEDUP}`,
-    };
+    return start
+      ? {
+          committed: `📝 Committed · your teammates' agents now get ${start}`,
+          uncommitted: `🌱 Commit what you learned and give your teammates' agents ${start}`,
+        }
+      : {
+          committed: `📝 Committed · your teammates' agents now get to a PR ${PR_SPEEDUP}`,
+          uncommitted: `🌱 Commit what you learned and your teammates' agents get to a PR ${PR_SPEEDUP}`,
+        };
   }
   const who = namesLabel(teammates);
   const work = teammates.length === 1 ? "works" : "work";
-  return {
-    committed: `📝 Committed · ${who} ${work} in ${place}, and their agents now get to a PR ${PR_SPEEDUP}`,
-    uncommitted: `🌱 ${who} ${work} in ${place}. Commit what you learned and their agents get to a PR ${PR_SPEEDUP}`,
-  };
+  return start
+    ? {
+        committed: `📝 Committed · ${who} ${work} in ${place}, and their agents now get ${start}`,
+        uncommitted: `🌱 ${who} ${work} in ${place}. Commit what you learned and give their agents ${start}`,
+      }
+    : {
+        committed: `📝 Committed · ${who} ${work} in ${place}, and their agents now get to a PR ${PR_SPEEDUP}`,
+        uncommitted: `🌱 ${who} ${work} in ${place}. Commit what you learned and their agents get to a PR ${PR_SPEEDUP}`,
+      };
 }
 
-/** The line that credits reused learnings, for `ask` and the agent's closing line. Null when none were shown. */
+/**
+ * What starting from these learnings is worth, for the agent's closing line:
+ * the tokens they saved, less what reading them costs, when that's worth
+ * saying, otherwise a faster PR.
+ */
+export function learningCredit(hits: NoteHit[]): string {
+  const saved = hits.reduce((sum, h) => sum + savedByNote(h.note), 0);
+  if (!tokensWorthSaying(saved)) return `${PR_SPEEDUP} to a PR`;
+  const minutes = hits.reduce((sum, h) => sum + (h.note.cost?.minutes ?? 0), 0);
+  return `saved ${tokensLabel(saved)}${minutes > 0 ? ` and ~${minutes} min` : ""}`;
+}
+
+/**
+ * The line that credits reused learnings, for `ask` and the agent's closing
+ * line: what they took to work out, less what reading them here costs, when
+ * that's worth saying, otherwise a faster PR. Null when none were shown.
+ */
 export function learningSavingsLine(hits: NoteHit[]): string | null {
   if (!hits.length) return null;
-  return `[trail] starting from ${hits.length === 1 ? "this learning" : "these learnings"} gets you to a PR ${PR_SPEEDUP}.`;
+  const saved = hits.reduce((sum, h) => sum + savedByNote(h.note), 0);
+  if (!tokensWorthSaying(saved)) return `[trail] starting from ${hits.length === 1 ? "this learning" : "these learnings"} gets you to a PR ${PR_SPEEDUP}.`;
+  const read = hits.reduce((sum, h) => sum + readingTokens(h.note), 0);
+  const minutes = hits.reduce((sum, h) => sum + (h.note.cost?.minutes ?? 0), 0);
+  const time = minutes > 0 ? ` and ~${minutes} min` : "";
+  return `[trail] learnings saved ≈ ${saved.toLocaleString("en-US")} tokens${time} (estimate): what they took to work out, less the ~${read.toLocaleString("en-US")} tokens to read them here.`;
 }

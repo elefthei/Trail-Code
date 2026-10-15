@@ -55,7 +55,7 @@ import { patchBuildConfig, type BuildConfig } from "./util/state.js";
 import { normalizePathPrefix } from "./util/paths.js";
 import { latestSession, formatSessionStats, sessionInputRate } from "./claude/session-metrics.js";
 import { listSessionIds, readSession, sessionDir } from "./claude/state.js";
-import { costLabel, listNotes, noteName, notePlace, noteTargets, readingTokens, savedByNote, commitLines, PERSONAL_SAVED_LINE, PR_SPEEDUP, SECTIONS, sectionLead, shortDate, tokensLabel, writeNote, type Note, mentionedFiles } from "./notes/notes.js";
+import { costLabel, listNotes, noteName, notePlace, noteTargets, readingTokens, savedByNote, commitLines, PERSONAL_SAVED_LINE, PR_SPEEDUP, SECTIONS, tokensWorthSaying, sectionLead, shortDate, tokensLabel, writeNote, type Note, mentionedFiles } from "./notes/notes.js";
 import { currentSessionCost } from "./notes/session-cost.js";
 import { beginPastRead, finishPastRead } from "./notes/cold-start.js";
 import { currentBranch, noteAuthor, teammatesOn } from "./notes/git-facts.js";
@@ -1378,10 +1378,14 @@ async function runNoteCommand(repo: string, opts: NoteOptions): Promise<void> {
   }
   for (const n of saved) console.log(`✓ ${n.scope === "personal" ? "saved just for you" : "saved for your team"} · ${notePlace(n)}`);
   const note = saved[0]!;
-  if (note.scope !== "personal") {
-    // Name a code file if the note touches one; docs are rarely what it's about.
-    const about = touches.find((t) => !/\.(md|mdx|txt)$/i.test(t.split("#")[0]!)) ?? touches[0];
-    const first = about ? ` that touches ${basename(about.split("#")[0]!)}` : "";
+  // Name a code file if the note touches one; docs are rarely what it's about.
+  const about = touches.find((t) => !/\.(md|mdx|txt)$/i.test(t.split("#")[0]!)) ?? touches[0];
+  const first = about ? ` that touches ${basename(about.split("#")[0]!)}` : "";
+  const took = costLabel(note.cost);
+  if (took && tokensWorthSaying(note.cost?.tokens)) {
+    const reading = tokensLabel(readingTokens(note)).replace(" tokens", "");
+    console.log(`· this ${took.replace(" to work out", " to figure out")}. the next session${first} gets it for ${reading}`);
+  } else if (note.scope !== "personal") {
     console.log(`· the next session${first} starts from this, and gets to a PR ${PR_SPEEDUP}`);
   }
   // Learnings about the same files, from someone else: this one builds on theirs.
