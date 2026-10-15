@@ -238,8 +238,8 @@ test("trail init reads past sessions by itself and saves what came up twice, onc
   assert.equal(first.status, 0, first.err);
   assert.match(first.err, /· reading your 2 past Claude sessions here/);
   assert.match(first.err, /✓ learned 2 things you told Claude more than once, from your last 2 sessions here/);
-  assert.match(first.err, /for your team · Run go test with -race before pushing/);
-  assert.match(first.err, /just for you  · Say what you understood before building/);
+  assert.match(first.err, /for your team · told Claude in 2 sessions: Run go test with -race before pushing/);
+  assert.match(first.err, /just for you  · told Claude in 2 sessions: Say what you understood before building/);
   assert.match(first.err, /· Claude follows them from your next session\n🌱 Commit what you learned and give your teammates' agents a head start/);
 
   const [file] = readdirSync(join(repo, ".trail", "learnings")).filter((f) => f.endsWith(".md"));
