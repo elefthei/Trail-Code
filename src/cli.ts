@@ -214,6 +214,63 @@ async function refreshBefore(dir: string, opts: { refresh?: boolean }): Promise<
   if (note) console.error(note);
 }
 
+/**
+ * `ask --jev`. Kept out of the command body because it is the one ask path that
+ * is async and needs a key: the seed and prune passes are network calls, so a
+ * missing or rejected key must fall back to the ordinary pack rather than fail
+ * the query outright — `ask` is on the agent's hot path.
+ */
+async function runJevAsk(
+  dir: string,
+  query: string,
+  opts: { limit: string; net?: string; source?: boolean; full?: boolean; in?: string; json?: boolean; loop?: boolean; rounds?: string },
+): Promise<void> {
+  const cfg = resolveConfig({ contextDir: program.opts<GlobalOpts>().dir });
+  if (!cfg.apiKey) {
+    console.error("✗ --jev needs an API key — set GRAFT_API_KEY (or OPENROUTER_API_KEY) and retry");
+    process.exit(1);
+    return;
+  }
+  if (opts.loop) {
+    const { askJevLoop, formatJevLoop } = await import("./ask/jev-loop.js");
+    try {
+      const r = await askJevLoop(dir, query, {
+        contextDir: program.opts<GlobalOpts>().dir,
+        limit: Number(opts.limit),
+        maxRounds: Number(opts.rounds ?? 12),
+        source: opts.source,
+        in: opts.in,
+        apiKey: cfg.apiKey,
+      });
+      noteHit(r.hits.length > 0);
+      if (opts.json) console.log(JSON.stringify(r, null, 2));
+      else process.stdout.write(formatJevLoop(r));
+    } catch (err) {
+      console.error(`✗ ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+    return;
+  }
+  const { askJev, formatJevAsk } = await import("./ask/jev-ask.js");
+  try {
+    const r = await askJev(dir, query, {
+      contextDir: program.opts<GlobalOpts>().dir,
+      limit: Number(opts.limit),
+      netWidth: Number(opts.net ?? 100),
+      source: opts.source,
+      full: opts.full,
+      in: opts.in,
+      apiKey: cfg.apiKey,
+    });
+    noteHit(r.hits.length > 0);
+    if (opts.json) console.log(JSON.stringify(r, null, 2));
+    else process.stdout.write(formatJevAsk(r));
+  } catch (err) {
+    console.error(`✗ ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+}
+
 /** Attached to every query command: `--no-refresh` answers from the graph exactly
  * as it is on disk, no rebuild. */
 const NO_REFRESH_FLAG = ["--no-refresh", "skip the freshness check — answer from the graph as-is"] as const;
@@ -635,8 +692,12 @@ program
   .option("--in <path>", "narrow to nodes under this path prefix, filtered before scoring (segment-aware, like scopeOf)")
   .option("--json", "output the result as JSON")
   .option("--no-graph-rank", "rank by lexical relevance only, without the graph-connectivity re-rank (ablation/eval)")
+  .option("--jev", "seed/walk/prune retrieval: widen the lexical net, let a decision model pick the seeds, walk the call graph from them, prune what came along (needs an API key)")
+  .option("--net <n>", "with --jev: lexical candidates handed to the seed pass", "100")
+  .option("--loop", "run the grep-and-read loop with a decision model driving it: one call per round, stops when it judges the pack complete (needs an API key)")
+  .option("--rounds <n>", "with --loop: hard cap on decision rounds", "12")
   .option(...NO_REFRESH_FLAG)
-  .action(async (query: string, dirArg: string | undefined, opts: { limit: string; source?: boolean; full?: boolean; in?: string; json?: boolean; refresh?: boolean; graphRank?: boolean }) => {
+  .action(async (query: string, dirArg: string | undefined, opts: { limit: string; source?: boolean; full?: boolean; in?: string; json?: boolean; refresh?: boolean; graphRank?: boolean; jev?: boolean; net?: string; loop?: boolean; rounds?: string }) => {
     const dir = noteQuery(queryRoot(dirArg));
     await refreshBefore(dir, opts);
     const askGlobalDir = program.opts<GlobalOpts>().dir;
@@ -644,6 +705,10 @@ program
       runWorkspaceAsk(dir, askGlobalDir, query, {
         limit: Number(opts.limit), source: opts.source, full: opts.full, in: opts.in, json: opts.json,
       });
+      return;
+    }
+    if (opts.jev || opts.loop) {
+      await runJevAsk(dir, query, opts);
       return;
     }
     const engine = engineFrom();

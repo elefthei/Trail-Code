@@ -1248,7 +1248,7 @@ function parseSpan(pointer: string): { path: string; from: number; to: number } 
 
 /** Read the source lines [from, to] (1-indexed, inclusive) of `path` under `root`,
  * capped at {@link MAX_SPAN_LINES}. Returns null if the file can't be read. */
-function sliceSpan(root: string, path: string, from: number, to: number): string | null {
+export function sliceSpan(root: string, path: string, from: number, to: number): string | null {
   try {
     const source = readSourceFile(join(root, path));
     if (source === null) return null; // unsupported encoding (e.g. UTF-16BE)
@@ -1272,7 +1272,7 @@ function sliceSpan(root: string, path: string, from: number, to: number): string
  * `full` is off, inline that ≤8-line excerpt (with an escalation marker) rather
  * than the whole definition — most hits only need the decision point, and the
  * marker tells the agent exactly how to get the rest when this one doesn't. */
-function inlineSource(root: string, hits: AskHit[], graph: GraphV1 | null, full: boolean): void {
+export function inlineSource(root: string, hits: AskHit[], graph: GraphV1 | null, full: boolean): void {
   const cruxByPointer = new Map<string, string>();
   if (!full && graph) {
     for (const n of graph.nodes)
