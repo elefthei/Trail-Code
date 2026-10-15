@@ -523,7 +523,7 @@ export const PR_SPEEDUP = "3x faster";
  * Below this many tokens, what a learning saves is too small a number to
  * impress, so trail credits it as a faster PR instead.
  */
-export const TOKEN_CREDIT_FLOOR = 10_000;
+export const TOKEN_CREDIT_FLOOR = 80_000;
 
 /** Whether a token count is big enough to be the credit. */
 export function tokensWorthSaying(tokens: number | undefined): boolean {
@@ -543,7 +543,9 @@ export function commitLines(
   where: "files" | "repo" = "files",
 ): { committed: string; uncommitted: string } {
   const tokens = note.cost?.tokens;
-  const start = tokensWorthSaying(tokens) ? `a ${tokensShort(tokens!)}-token head start` : null;
+  const short = tokensWorthSaying(tokens) ? tokensShort(tokens!) : null;
+  // "an 80k-token", "an 11k-token": said aloud, they start with a vowel.
+  const start = short ? `${/^8|^1[18]k$/.test(short) ? "an" : "a"} ${short}-token head start` : null;
   const place = where === "files" ? "this part of the codebase" : "this repo";
   if (!teammates.length) {
     return start

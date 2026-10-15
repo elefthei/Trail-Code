@@ -124,13 +124,13 @@ test("anything like a credential or an email is scrubbed before a learning is wr
   assert.ok(!out.includes("AKIA"));
 });
 
-test("the closing lines name who works there and the head start, or a faster PR when it's under 10k tokens", () => {
+test("the closing lines name who works there and the head start, or a faster PR when it's under 80k tokens", () => {
   assert.equal(PERSONAL_SAVED_LINE, "📝 Saved just for you · stays on this machine, out of the repo");
-  const five = commitLines({ cost: { tokens: 48000 } }, ["Anay", "Rushil", "Ritika", "Rohan", "Kumar"]);
-  assert.equal(five.uncommitted, "🌱 Anay, Rushil and 3 others work in this part of the codebase. Commit what you learned and give their agents a 48k-token head start");
-  assert.equal(five.committed, "📝 Committed · Anay, Rushil and 3 others work in this part of the codebase, and their agents now get a 48k-token head start");
-  assert.equal(commitLines({ cost: { tokens: 10_000 } }, []).uncommitted, "🌱 Commit what you learned and give your teammates' agents a 10k-token head start");
-  const small = commitLines({ cost: { tokens: 9_999 } }, ["Anay", "Rushil", "Ritika", "Rohan", "Kumar"]);
+  const five = commitLines({ cost: { tokens: 96000 } }, ["Anay", "Rushil", "Ritika", "Rohan", "Kumar"]);
+  assert.equal(five.uncommitted, "🌱 Anay, Rushil and 3 others work in this part of the codebase. Commit what you learned and give their agents a 96k-token head start");
+  assert.equal(five.committed, "📝 Committed · Anay, Rushil and 3 others work in this part of the codebase, and their agents now get a 96k-token head start");
+  assert.equal(commitLines({ cost: { tokens: 80_000 } }, []).uncommitted, "🌱 Commit what you learned and give your teammates' agents an 80k-token head start");
+  const small = commitLines({ cost: { tokens: 79_999 } }, ["Anay", "Rushil", "Ritika", "Rohan", "Kumar"]);
   assert.equal(small.uncommitted, "🌱 Anay, Rushil and 3 others work in this part of the codebase. Commit what you learned and their agents get to a PR 3x faster");
   assert.equal(small.committed, "📝 Committed · Anay, Rushil and 3 others work in this part of the codebase, and their agents now get to a PR 3x faster");
   assert.equal(commitLines({}, [], "repo").uncommitted, "🌱 Commit what you learned and your teammates' agents get to a PR 3x faster");

@@ -300,7 +300,7 @@ export function teamNotesDirective(notes: number, kept = notes > 0): string {
   const read =
     notes > 0
       ? `This repo has ${notes} learning${notes === 1 ? '' : 's'} from past sessions, yours and your team's, on what was decided, tried and ruled out (in .trail/learnings/). \`${cmd('graft ask')}\` puts the ones that bear on a task above the code; read them before exploring. ` +
-        `When one saved you work, close your reply with one short line crediting it with what ${b()} prints with it, e.g. 📝 Started from Priya's learning · saved ~27k tokens and ~4 min, or · ${PR_SPEEDUP} to a PR when that's what it prints.\n`
+        `When one saved you work, close your reply with one short line crediting it with what ${b()} prints with it, e.g. 📝 Started from Priya's learning · saved ~90k tokens and ~12 min, or · ${PR_SPEEDUP} to a PR when that's what it prints.\n`
       : '';
   return (
     read +
