@@ -1588,7 +1588,12 @@ async function runInitCommand(dir: string, opts: InitOptions): Promise<{ ids: st
       if (saved.length) {
         const n = saved.length;
         console.error(`✓ learned ${n} thing${n === 1 ? "" : "s"} you told Claude more than once, from your last ${result.read} sessions here`);
-        for (const note of saved) console.error(`    ${note.scope === "personal" ? "just for you " : "for your team"} · ${note.title}`);
+        // Each with how many sessions it was said in: saveFindings keeps the findings' order.
+        saved.forEach((note, i) => {
+          const said = result.findings[i]?.sessions.length ?? 0;
+          const count = said > 1 ? `told Claude in ${said} sessions: ` : "";
+          console.error(`    ${note.scope === "personal" ? "just for you " : "for your team"} · ${count}${note.title}`);
+        });
         console.error("· Claude follows them from your next session");
         if (saved.some((s) => s.scope === "repo")) console.error(commitLines({}, teammatesOn(repo), "repo").uncommitted);
       } else if (result.reason === "failed") {
