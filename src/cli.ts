@@ -46,7 +46,7 @@ import {
 import { formatInitEpilogue } from "./cli-epilogue.js";
 import { planInit, selectedWrites } from "./hosts/plan.js";
 import { planRetract, runRetract, changed, type Retraction } from "./hosts/retract.js";
-import { compactWrites, formatNonInteractiveHelp, formatPlan, runPicker } from "./cli-picker.js";
+import { compactWrites, formatNonInteractiveHelp, formatPlan, pickLearnings, runPicker } from "./cli-picker.js";
 import { buildGraphWithProgress } from "./claude/build-progress.js";
 import { homedir } from "node:os";
 import { formatUpgradeReport, formatVersionReport, getNpmViewVersion, readCurrentVersion, readPackageName, runUpgrade } from "./cli-meta.js";
@@ -57,7 +57,7 @@ import { latestSession, formatSessionStats, sessionInputRate } from "./claude/se
 import { listSessionIds, readSession, sessionDir } from "./claude/state.js";
 import { costLabel, listNotes, noteName, notePlace, noteTargets, readingTokens, savedByNote, commitLines, PERSONAL_SAVED_LINE, PR_SPEEDUP, SECTIONS, tokensWorthSaying, sectionLead, shortDate, tokensLabel, writeNote, type Note, mentionedFiles } from "./notes/notes.js";
 import { currentSessionCost } from "./notes/session-cost.js";
-import { beginPastRead, finishPastRead } from "./notes/cold-start.js";
+import { beginPastRead, finishPastRead, type Finding } from "./notes/cold-start.js";
 import { currentBranch, noteAuthor, teammatesOn } from "./notes/git-facts.js";
 import { confirm, fold, getSkill, learn, listSkills, publish, skillForAgent, skillName, skillStatus, type LearnResult } from "./skills/skills.js";
 import { clearPending, cloudLines, loginLink, sessionKey, waitForConnect } from "./cloud/nudge.js";
@@ -1583,19 +1583,34 @@ async function runInitCommand(dir: string, opts: InitOptions): Promise<{ ids: st
     let learnedNow = false;
     if (TRAIL && pastRead) {
       if (!pastRead.done) console.error("· still reading your past sessions…");
-      const { result, saved } = await finishPastRead(repo, pastRead);
+      // On a terminal, the person ticks which to keep, all ticked to start;
+      // a scripted run, or one with --yes, keeps them all.
+      const keep =
+        process.stdin.isTTY && process.stderr.isTTY && !opts.yes
+          ? async (found: Finding[]) => {
+              const picked = await pickLearnings(found.map((f) => ({ title: f.title, forTeam: f.for === "team", sessions: f.sessions.length })));
+              return picked && picked.map((i) => found[i]!);
+            }
+          : undefined;
+      const { result, saved, kept, cancelled } = await finishPastRead(repo, pastRead, keep);
       learnedNow = saved.length > 0;
+      const offered = result.findings.length;
       if (saved.length) {
         const n = saved.length;
-        console.error(`✓ learned ${n} thing${n === 1 ? "" : "s"} you told Claude more than once, from your last ${result.read} sessions here`);
+        const what = n < offered ? `kept ${n} of the ${offered} things` : `learned ${n} thing${n === 1 ? "" : "s"}`;
+        console.error(`✓ ${what} you told Claude more than once, from your last ${result.read} sessions here`);
         // Each with how many sessions it was said in: saveFindings keeps the findings' order.
         saved.forEach((note, i) => {
-          const said = result.findings[i]?.sessions.length ?? 0;
+          const said = kept[i]?.sessions.length ?? 0;
           const count = said > 1 ? `told Claude in ${said} sessions: ` : "";
           console.error(`    ${note.scope === "personal" ? "just for you " : "for your team"} · ${count}${note.title}`);
         });
         console.error("· Claude follows them from your next session");
         if (saved.some((s) => s.scope === "repo")) console.error(commitLines({}, teammatesOn(repo), "repo").uncommitted);
+      } else if (cancelled) {
+        console.error(`· saved none of the ${offered} things you told Claude more than once; ${cmd("graft init")} again asks again`);
+      } else if (offered) {
+        console.error(`· kept none of the ${offered} things you told Claude more than once`);
       } else if (result.reason === "failed") {
         console.error(`· couldn't read your past sessions this time; ${cmd("graft init")} again tries again`);
       }

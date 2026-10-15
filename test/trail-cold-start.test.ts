@@ -6,10 +6,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { claudeBin, digest, ownWords, readSession, scrub, sessionFiles, verify, type PastSession } from "../src/notes/cold-start.js";
+import { claudeBin, digest, finishPastRead, ownWords, readSession, scrub, sessionFiles, verify, type Finding, type FindResult, type PastSession } from "../src/notes/cold-start.js";
+import { ensureRepoHome } from "../src/notes/home.js";
 import { standingDirective } from "../src/claude/format.js";
 import { commitLines, namesLabel, parseNote, PERSONAL_SAVED_LINE, standingLearnings } from "../src/notes/notes.js";
 import { teammatesOn } from "../src/notes/git-facts.js";
@@ -300,4 +301,55 @@ test("claudeBin skips an extension folder without the binary, and is null with n
   const home = homeWith();
   mkdirSync(join(home, ".vscode", "extensions", "anthropic.claude-code-2.1.300-darwin-arm64"), { recursive: true });
   assert.equal(claudeBin(home, () => false), null);
+});
+
+/* ---- ticking which learnings to keep ---- */
+
+function found(title: string, forWho: "team" | "you"): Finding {
+  return { title, for: forWho, body: "## Decided\n- " + title + ".", sessions: ["a", "b", "c"], last: "2026-10-14", quotes: [] };
+}
+
+function readWith(findings: Finding[]) {
+  const result: FindResult = { sessions: 3, read: 3, findings, model: "claude-sonnet-5-5", durationMs: 10 };
+  return { sessions: 3, started: Date.now(), done: true, result: Promise.resolve(result) };
+}
+
+test("init saves only the learnings the person kept, and remembers the repo was read", async () => {
+  const home = mkdtempSync(join(tmpdir(), "keep-home-"));
+  const env = { TRAIL_HOME: process.env.TRAIL_HOME, DO_NOT_TRACK: process.env.DO_NOT_TRACK };
+  process.env.TRAIL_HOME = join(home, ".trail");
+  process.env.DO_NOT_TRACK = "1";
+  try {
+    const repo = tmpRepo("keep-some");
+    spawnSync("git", ["init", "-q"], { cwd: repo });
+    const all = [found("Use pnpm, not npm", "team"), found("Say what you understood first", "you"), found("Run go test with -race", "team")];
+    const { saved, kept, cancelled } = await finishPastRead(repo, readWith(all), async (f) => [f[0]!, f[2]!]);
+    assert.equal(cancelled, false);
+    assert.deepEqual(kept.map((f) => f.title), ["Use pnpm, not npm", "Run go test with -race"]);
+    assert.deepEqual(saved.map((n) => n.title), ["Use pnpm, not npm", "Run go test with -race"]);
+    assert.equal(readdirSync(join(repo, ".trail", "learnings")).filter((f) => f.endsWith(".md")).length, 2);
+    assert.ok(existsSync(join(ensureRepoHome(repo).place.dir, "past-sessions.json")), "read once per repo");
+  } finally {
+    process.env.TRAIL_HOME = env.TRAIL_HOME;
+    process.env.DO_NOT_TRACK = env.DO_NOT_TRACK;
+  }
+});
+
+test("cancelling the pick saves nothing, and the next init asks again", async () => {
+  const home = mkdtempSync(join(tmpdir(), "keep-none-home-"));
+  const env = { TRAIL_HOME: process.env.TRAIL_HOME, DO_NOT_TRACK: process.env.DO_NOT_TRACK };
+  process.env.TRAIL_HOME = join(home, ".trail");
+  process.env.DO_NOT_TRACK = "1";
+  try {
+    const repo = tmpRepo("keep-cancel");
+    spawnSync("git", ["init", "-q"], { cwd: repo });
+    const { saved, cancelled } = await finishPastRead(repo, readWith([found("Use pnpm, not npm", "team")]), async () => null);
+    assert.equal(cancelled, true);
+    assert.equal(saved.length, 0);
+    assert.equal(existsSync(join(repo, ".trail", "learnings")) && readdirSync(join(repo, ".trail", "learnings")).some((f) => f.endsWith(".md")), false);
+    assert.equal(existsSync(join(ensureRepoHome(repo).place.dir, "past-sessions.json")), false, "not marked read");
+  } finally {
+    process.env.TRAIL_HOME = env.TRAIL_HOME;
+    process.env.DO_NOT_TRACK = env.DO_NOT_TRACK;
+  }
 });

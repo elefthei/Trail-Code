@@ -577,11 +577,21 @@ export function saveFindings(repo: string, findings: Finding[], author = noteAut
   );
 }
 
-/** Wait for the read, save what it found, and remember the repo was read. */
-export async function finishPastRead(repo: string, read: PastRead): Promise<{ result: FindResult; saved: Note[] }> {
+/**
+ * Wait for the read, save the findings the person keeps, and remember the repo
+ * was read. Every finding is kept unless `keep` picks; `keep` resolving null
+ * means they cancelled, so nothing is saved and the next init asks again.
+ */
+export async function finishPastRead(
+  repo: string,
+  read: PastRead,
+  keep?: (findings: Finding[]) => Promise<Finding[] | null>,
+): Promise<{ result: FindResult; saved: Note[]; kept: Finding[]; cancelled: boolean }> {
   const result = await read.result;
-  const saved = result.findings.length ? saveFindings(repo, result.findings) : [];
-  const outcome = saved.length ? "found" : (result.reason ?? "none_found");
+  const chosen = result.findings.length && keep ? await keep(result.findings) : result.findings;
+  const kept = chosen ?? [];
+  const saved = kept.length ? saveFindings(repo, kept) : [];
+  const outcome = chosen === null ? "cancelled" : result.findings.length ? "found" : (result.reason ?? "none_found");
   if (outcome === "found" || outcome === "none_found") writeJsonAtomic(readMark(repo), { at: Date.now(), model: result.model, saved: saved.length }, true);
   track(
     "cold_start",
@@ -595,5 +605,5 @@ export async function finishPastRead(repo: string, read: PastRead): Promise<{ re
     },
     { repo },
   );
-  return { result, saved };
+  return { result, saved, kept, cancelled: chosen === null };
 }
