@@ -241,7 +241,7 @@ test("trail init makes the repo's .trail/learnings/ and says to commit it; graft
   const t = run("trail", ["init", d, "--agents", "claude", "--yes", "--no-global"], home);
   assert.equal(t.status, 0, t.err);
   assert.match(t.err, /✓ learnings {2}\.trail\/learnings\/ · sessions that take real digging leave one there, for your whole team/);
-  assert.match(t.err, /· commit .*\.trail\/ to share it/);
+  assert.match(t.err, /· commit \.claude\/settings\.json and \.trail\/ once — after that, teammates' Claude reads your learnings even before they install trail/);
   assert.ok(existsSync(join(d, ".trail", "learnings")));
   assert.match(readFileSync(join(d, ".trail", "README.md"), "utf8"), /^# \.trail/);
   assert.equal(readFileSync(join(d, "CLAUDE.md"), "utf8"), "# extract\n\nTeam rules.\n", "the team's CLAUDE.md is untouched");
@@ -421,25 +421,37 @@ test("trail init moves a graft-wired repo to trail's names, and uninstall takes 
 
     const t = run("trail", ["init", d, "--agents", "claude", "--yes", "--no-global"], home);
     assert.equal(t.status, 0, t.err);
-    for (const f of ["helpers/trail-hooks.cjs", "helpers/trail-statusline.cjs", "skills/trail/SKILL.md"]) assert.ok(existsSync(join(d, ".claude", f)), f);
-    for (const f of ["helpers/graft-hooks.cjs", "helpers/graft-statusline.cjs", "skills/graft"]) assert.equal(existsSync(join(d, ".claude", f)), false, f);
-    const settings = readFileSync(join(d, ".claude", "settings.json"), "utf8");
-    assert.match(settings, /trail-hooks\.cjs\\" session-start/);
-    assert.doesNotMatch(settings, /graft-hooks\.cjs/);
-    assert.match(settings, /trail-statusline\.cjs/);
-    const mcp = JSON.parse(readFileSync(join(d, ".mcp.json"), "utf8"));
-    assert.deepEqual(Object.keys(mcp.mcpServers), ["trail"]);
-    assert.deepEqual(mcp.mcpServers.trail, { command: "npx", args: ["-y", "@trailhq/trail-code", "mcp"] });
+    // Shared: the hook in .trail/ and one SessionStart entry. The old layout is gone.
+    for (const f of [".trail/hook.cjs", ".trail/statusline.cjs"]) assert.ok(existsSync(join(d, f)), f);
+    for (const f of ["helpers", "skills/graft", "skills/trail"]) assert.equal(existsSync(join(d, ".claude", f)), false, f);
+    const settings = JSON.parse(readFileSync(join(d, ".claude", "settings.json"), "utf8"));
+    assert.deepEqual(Object.keys(settings.hooks), ["SessionStart"]);
+    assert.match(JSON.stringify(settings.hooks.SessionStart), /\/\.trail\/hook\.cjs\\" session-start/);
+    for (const k of ["statusLine", "permissions", "footerLinksRegexes"]) assert.equal(settings[k], undefined, k);
+    // Personal: status line, allowlist, and under --no-global every other hook, never session start.
+    const local = JSON.parse(readFileSync(join(d, ".claude", "settings.local.json"), "utf8"));
+    assert.match(local.statusLine.command, /\.trail\/statusline\.cjs/);
+    assert.ok(local.permissions.allow.includes("Bash(trail:*)"));
+    assert.equal(local.hooks.SessionStart, undefined);
+    assert.match(JSON.stringify(local.hooks.UserPromptSubmit), /\.trail\/hook\.cjs\\" prompt/);
+    assert.match(JSON.stringify(local.hooks.SessionEnd), /\.trail\/hook\.cjs\\" session-end/);
+    // No MCP server for Claude Code: graft's .mcp.json had only graft's, so it goes.
+    assert.equal(existsSync(join(d, ".mcp.json")), false);
+    // Nothing personal shows in git, and .gitignore is untouched by the setup.
+    assert.match(readFileSync(join(d, ".trail", ".gitignore"), "utf8"), /^statusline\.cjs$/m);
+    for (const f of [".claude/settings.local.json", ".trail/statusline.cjs"]) assert.equal(spawnSync("git", ["check-ignore", "-q", f], { cwd: d }).status, 0, f);
 
     // Running it again changes nothing.
+    const before = [".claude/settings.json", ".claude/settings.local.json"].map((f) => readFileSync(join(d, f), "utf8"));
     const again = run("trail", ["init", d, "--agents", "claude", "--yes", "--no-global"], home);
     assert.equal(again.status, 0, again.err);
-    assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(d, ".mcp.json"), "utf8")).mcpServers), ["trail"]);
+    assert.deepEqual([".claude/settings.json", ".claude/settings.local.json"].map((f) => readFileSync(join(d, f), "utf8")), before);
 
     const un = run("trail", ["uninstall", d, "-y", "--no-global"], home);
     assert.equal(un.status, 0, un.err);
-    for (const f of ["helpers/trail-hooks.cjs", "skills/trail/SKILL.md"]) assert.equal(existsSync(join(d, ".claude", f)), false, f);
-    assert.equal(existsSync(join(d, ".mcp.json")), false);
+    for (const f of [".trail/hook.cjs", ".trail/statusline.cjs"]) assert.equal(existsSync(join(d, f)), false, f);
+    // Both held only what init wrote, so they go with it.
+    for (const f of ["settings.json", "settings.local.json"]) assert.equal(existsSync(join(d, ".claude", f)), false, f);
   } finally {
     delete process.env.GRAFT_MCP_NPX;
   }

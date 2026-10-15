@@ -1664,8 +1664,11 @@ async function runInitCommand(dir: string, opts: InitOptions): Promise<{ ids: st
       const tops: string[] = [];
       for (const w of selectedWrites(plan, ids)) {
         if (w.scope !== "repo") continue;
-        const parts = shown(repo, w.path).split("/");
-        const top = parts.length > 1 ? `${parts[0]}/` : parts[0]!;
+        const rel = shown(repo, w.path);
+        // trail's Claude Code setup shares one file in .claude/; the rest there is personal.
+        if (TRAIL && rel.startsWith(".claude/") && rel !== ".claude/settings.json") continue;
+        const parts = rel.split("/");
+        const top = TRAIL && rel === ".claude/settings.json" ? rel : parts.length > 1 ? `${parts[0]}/` : parts[0]!;
         if (!tops.includes(top)) tops.push(top);
       }
       console.error(`· restart your agents so a new session picks up ${brand()}`);
@@ -1678,8 +1681,9 @@ async function runInitCommand(dir: string, opts: InitOptions): Promise<{ ids: st
       tops.splice(0, tops.length, ...changedTops);
       if (tops.length)
         console.error(
-          `· commit ${tops.slice(0, 5).join(" ")}${tops.length > 5 ? ` +${tops.length - 5} more` : ""} to share it — ` +
-            (TRAIL ? "teammates' Claude reads the learnings even without trail installed; the code map in graft/ stays on this machine" : "graft/ stays local and git-ignored"),
+          TRAIL
+            ? `· commit ${tops.slice(0, 5).join(" and ")}${tops.length > 5 ? ` +${tops.length - 5} more` : ""} once — after that, teammates' Claude reads your learnings even before they install trail`
+            : `· commit ${tops.slice(0, 5).join(" ")}${tops.length > 5 ? ` +${tops.length - 5} more` : ""} to share it — graft/ stays local and git-ignored`,
         );
     }
 
@@ -1759,8 +1763,10 @@ function wireTarget(
       const res = runInit(repo, { build: opts.build, cliPath, statusline: wantStatusline, global: opts.global, home, brand: brand() });
       say(`✓ wrote ${res.settingsPath}`);
       for (const s of res.shims) say(`✓ wrote ${s}`);
-      say(`✓ wrote ${res.skill}`);
-      if (res.mcp.action === "skipped-unparseable")
+      if (res.skill) say(`✓ wrote ${res.skill}`);
+      if (!res.mcp) {
+        // trail registers no server for Claude Code: the hooks and the `trail` command cover it.
+      } else if (res.mcp.action === "skipped-unparseable")
         say(`⚠ .mcp.json: ${res.mcp.path} left unchanged (not valid JSON) — add the graft server manually`);
       else if (res.mcp.action === "unchanged")
         say(`· mcp claude: ${res.mcp.path} (already registered)`);

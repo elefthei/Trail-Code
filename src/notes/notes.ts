@@ -572,6 +572,18 @@ export function commitLines(
 }
 
 /**
+ * The line asking for trail's shared setup to be committed, once: `.trail/`
+ * and the SessionStart entry in `.claude/settings.json` are what let a
+ * teammate's Claude read the learnings before they install anything.
+ */
+export function setupCommitLine(teammates: string[]): string {
+  const ask = "Commit .trail/ and .claude/settings.json once";
+  if (!teammates.length) return `🌱 ${ask}, and your teammates' Claude starts from your learnings, even before they install trail`;
+  const work = teammates.length === 1 ? "works" : "work";
+  return `🌱 ${namesLabel(teammates)} ${work} in this repo. ${ask}, and their Claude starts from your learnings, even before they install trail`;
+}
+
+/**
  * What starting from these learnings is worth, for the agent's closing line:
  * the tokens they saved, less what reading them costs, when that's worth
  * saying, otherwise a faster PR.

@@ -4,7 +4,7 @@ import { join, basename, isAbsolute, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { readWiring } from './stats.js';
 import { formatBlastRadius, relevantRetrieval, formatOrientation, notesForPrompt, standingDirective } from './format.js';
-import { commitLines, standingLearnings } from '../notes/notes.js';
+import { commitLines, setupCommitLine, standingLearnings } from '../notes/notes.js';
 import { noteAuthor, teammatesOn } from '../notes/git-facts.js';
 import { indexFreshness, staleBanner } from '../context/check.js';
 import { patchStats, readStats, acquireLock, readSession, writeSession, resolveContextDir } from './state.js';
@@ -13,6 +13,7 @@ import { runUpkeep } from '../upkeep-run.js';
 import { runningVersion, wiredHostIds } from '../upkeep.js';
 import { hostsWiredForTrail } from '../hosts/registry.js';
 import { flushClosedSessions, summarizeSession } from '../telemetry/sessions.js';
+import { maybeFlushInBackground } from '../telemetry/flush.js';
 import { hasSavingsTally, lastAssistantTurn, lastTurnBilling } from './tally.js';
 import { scopeOf, scopesOfGraph } from '../graph/scopes.js';
 import { classifyToolUse, isMcpToolName, isGraftMcpTool, parseSavings, recordToolUse, type ToolKind } from './session-metrics.js';
@@ -570,15 +571,40 @@ export function uncommittedDirective(dir: string, now = Date.now()): string {
       cwd: place.checkout, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000,
     });
     const n = status.split('\n').filter((l) => l.trimEnd().endsWith('.md')).length;
-    if (!n) return '';
+    const setup = setupUncommitted(place.checkout);
+    if (!n && !setup) return '';
     const mark = join(cacheDir(place.checkout), 'trail-uncommitted-said.json');
     if (now - (readJson<{ at?: number }>(mark)?.at ?? 0) < DAY_MS) return '';
     writeJsonAtomic(mark, { at: now }, true);
+    if (setup) {
+      const line = setupCommitLine(teammatesOn(place.checkout));
+      return `${tag()} trail's shared setup here (.trail/ and .claude/settings.json) isn't committed yet, so teammates' Claude can't read the learnings. Say so once, at the end of your first reply, with this line, word for word: ${line}\n`;
+    }
     const line = commitLines({}, teammatesOn(place.checkout), 'repo').uncommitted;
     const them = n === 1 ? "learning in .trail/learnings/ isn't committed yet, so no teammate's agent has it" : `learnings in .trail/learnings/ aren't committed yet, so no teammate's agent has them`;
     return `${tag()} ${n} team ${them}. Say so once, at the end of your first reply, with this line, word for word: ${line}\n`;
   } catch {
     return '';
+  }
+}
+
+/**
+ * trail's shared setup isn't in the last commit: `.trail/hook.cjs` isn't
+ * tracked, or HEAD's `.claude/settings.json` doesn't run it. Only checked
+ * where the hook is on disk, so a repo still set up the old way says nothing.
+ */
+export function setupUncommitted(checkout: string): boolean {
+  if (!existsSync(join(checkout, '.trail', 'hook.cjs'))) return false;
+  const git = (args: string[]) => execFileSync('git', args, { cwd: checkout, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000 });
+  try {
+    git(['ls-files', '--error-unmatch', '--', '.trail/hook.cjs']);
+  } catch {
+    return true;
+  }
+  try {
+    return !git(['show', 'HEAD:.claude/settings.json']).includes('/.trail/hook.cjs');
+  } catch {
+    return true;
   }
 }
 
@@ -607,6 +633,15 @@ function trailAtStart(dir: string): void {
   trackLearningsCommitted(dir);
 }
 
+/** The repo's committed `.mcp.json` still registers trail's server (set up before 0.23). */
+function repoNamesTrailServer(dir: string): boolean {
+  try {
+    return Boolean(JSON.parse(readFileSync(join(dir, '.mcp.json'), 'utf8'))?.mcpServers?.trail);
+  } catch {
+    return false;
+  }
+}
+
 export async function main(event: string): Promise<void> {
   // trail's own headless Claude calls (the first-run read of past sessions) run with this set.
   if (process.env.TRAIL_NO_HOOKS === '1') return;
@@ -626,12 +661,15 @@ export async function main(event: string): Promise<void> {
     // tells the person how to get it.
     const handover = wiredHostIds(dir).includes('claude') ? trailHandoverLine() : null;
     if (handover) upkeep.push(handover);
-    // Roll up any session that ended since we were last here. Queue-only — the
-    // hook still sends nothing; the CLI or the MCP server sends it later.
+    // Roll up any session that ended since we were last here, then send the
+    // queue from a detached child: what session end didn't get to (a killed
+    // terminal never fires it) goes now. Once a day at most, never waited on.
     flushClosedSessions(dir);
+    maybeFlushInBackground();
     trailAtStart(dir);
     // A repo on trail, opened on a machine that has graft but not the trail command.
-    if (repoWiredForTrail(dir)) fitTrailServerToMachine(homedir(), resolve(dir), { trail: trailOnPath(), graft: commandOnPath('graft') });
+    // Only while its .mcp.json still names a trail server: once it doesn't, trail: true takes back the stand-in.
+    if (repoWiredForTrail(dir)) fitTrailServerToMachine(homedir(), resolve(dir), { trail: trailOnPath() || !repoNamesTrailServer(dir), graft: commandOnPath('graft') });
     try {
       const idx = readFileSync(join(resolveContextDir(dir), 'INDEX.md'), 'utf8');
       const banner = staleBanner(indexFreshness(dir)) ?? undefined;
@@ -647,6 +685,9 @@ export async function main(event: string): Promise<void> {
     }
     return;
   }
+
+  // Claude closing: send the queue from a detached child, so quitting isn't slowed.
+  if (event === 'session-end') { maybeFlushInBackground(); return; }
 
   if (event === 'post-edit') { await handlePostEdit(input, dir); return; }
 

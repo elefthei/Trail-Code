@@ -79,8 +79,8 @@ test('the shims init commits are the same bytes on every machine', () => {
   runInit(repo, { build: false, home, global: false, brand: 'trail' });
   installCursorHooks(repo);
   const written = {
-    statusline: readFileSync(join(repo, '.claude', 'helpers', 'trail-statusline.cjs'), 'utf8'),
-    hooks: readFileSync(join(repo, '.claude', 'helpers', 'trail-hooks.cjs'), 'utf8'),
+    statusline: readFileSync(join(repo, '.trail', 'statusline.cjs'), 'utf8'),
+    hooks: readFileSync(join(repo, '.trail', 'hook.cjs'), 'utf8'),
     cursor: readFileSync(join(repo, '.cursor', 'hooks', 'graft-hooks.cjs'), 'utf8'),
   };
   assert.equal(written.statusline, statuslineShim());
