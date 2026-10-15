@@ -210,7 +210,7 @@ const DIR_ARG = ["[dir]", "repository root (default: nearest ancestor with a gra
 function queryRoot(dir?: string): string {
   if (dir !== undefined) return resolve(dir);
   const { root, levels } = nearestGraftRoot(process.cwd(), program.opts<GlobalOpts>().dir);
-  if (levels > 0) console.error(`${tag()} no graft/ here — answering from ${root}/graft`);
+  if (levels > 0) console.error(`${tag()} no code map here — answering from ${contextDirFor(root, program.opts<GlobalOpts>().dir)}`);
   return root;
 }
 
@@ -434,7 +434,7 @@ function moveHereToTrail(dir: string): void {
 grouped(program.command("build"), GROUP.setup)
   .description(
     TRAIL
-      ? "Rebuild the code map in graft/ ($0, no key). --check fails if it's stale; --deep adds LLM summaries."
+      ? "Rebuild the code map in .trail/cache/ ($0, no key). --check fails if it's stale; --deep adds LLM summaries."
       : "Build graft/ from your code — wiring graph + per-file cards ($0, no key). " +
           "Add --deep for the LLM concept map + per-symbol summaries/crux.",
   )
@@ -858,7 +858,7 @@ async function runCheckCommand(
     if (opts.json) {
       console.log(JSON.stringify({ context: r, graph: g.missing ? null : g }, null, 2));
     } else if (bothMissing) {
-      console.log(`${label}: NO GRAPH\n\nNo graft/ graph found. Run \`${cmd("graft build")}\` first.`);
+      console.log(`${label}: NO GRAPH\n\nNo code map found. Run \`${cmd("graft build")}\` first.`);
     } else {
       if (r.missing) {
         console.log(

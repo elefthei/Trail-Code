@@ -68,12 +68,16 @@ about trail.
 /**
  * Agent-facing graft text in trail's spelling, for every file trail writes
  * for an agent: the commands as trail spells them (`graft check` became
- * `trail build --check`, see `cmd`), and the name in prose. The code map
- * still lives in `graft/`, so a `graft` followed by `/` is a path and stays,
- * as do `graft-…` and `graft_…` names.
+ * `trail build --check`, see `cmd`), and the name in prose. Under trail the
+ * code map is in `.trail/cache/` (context/map-dir.ts), so the folder's name
+ * changes too; any other `graft` followed by `/` stays, as do `graft-…` and
+ * `graft_…` names.
  */
 export function trailSpelling(text: string): string {
   return text
+    .replace(/`graft\/`/g, "`.trail/cache/`")
+    .replace(/(?<![\w./-])graft\/INDEX\.md/g, ".trail/cache/INDEX.md")
+    .replace(/(?<![\w./-])graft\/(?=[\s.,)])/g, ".trail/cache/")
     .replace(/\bgraft (check|stats)\b(?![\w-])/g, (m) => cmd(m, "trail"))
     .replace(/\bGraft\b(?![/\w-])/g, "Trail")
     .replace(/\bgraft\b(?![/\w-])/g, "trail");

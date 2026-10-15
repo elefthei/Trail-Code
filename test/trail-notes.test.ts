@@ -328,7 +328,7 @@ test("trail note without a body says how to write one", () => {
 
 // --- what agents read in a repo that uses trail ---
 
-test("the skill speaks trail in a repo wired for it, keeps graft/ paths, and teaches learnings", async () => {
+test("the skill speaks trail in a repo wired for it, names the map in .trail/cache/, and teaches learnings", async () => {
   const { skillTemplate } = await import("../src/claude/skill-template.js");
   const graft = skillTemplate("graft");
   const trail = skillTemplate("trail");
@@ -337,7 +337,7 @@ test("the skill speaks trail in a repo wired for it, keeps graft/ paths, and tea
   assert.match(trail, /^name: trail$/m, "it lives in .claude/skills/trail/");
   assert.match(trail, /`trail ask "<question>" --source`/);
   assert.match(trail, /`trail build` \/ `trail build --check`/);
-  assert.match(trail, /`graft\/` holds a graph/, "the code map folder is still graft/");
+  assert.match(trail, /`\.trail\/cache\/` holds a graph/, "under trail the code map is in .trail/cache/");
   assert.doesNotMatch(trail, /\bgraft (ask|grep|skeleton|callers|map|build|check)\b/);
   assert.match(trail, /trail note --title/);
   assert.match(trail, /It's written to `\.trail\/learnings\/`\. Commit it\n  with the change it came from/);

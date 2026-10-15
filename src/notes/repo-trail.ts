@@ -17,7 +17,7 @@
  * background `git fetch` refreshes (branches.ts), so nothing here spawns git.
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 /** The folder, relative to the top of the checkout. */
 export const TRAIL_DIR = ".trail";
@@ -96,4 +96,14 @@ export function readLearningFile(checkout: string, name: string): string | null 
   } catch {
     return null;
   }
+}
+
+/** One line in `.trail/.gitignore`, added once. */
+export function ignoreInTrailDir(dir: string, entry: string): void {
+  const path = join(dir, ".trail", ".gitignore");
+  let text = "";
+  try { text = readFileSync(path, "utf8"); } catch { /* new */ }
+  if (text.split("\n").some((l) => l.trim() === entry)) return;
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${text}${text && !text.endsWith("\n") ? "\n" : ""}${entry}\n`);
 }

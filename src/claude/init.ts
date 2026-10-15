@@ -8,6 +8,8 @@ import { statuslineShim, hooksShim, rememberInstall } from './shim-template.js';
 import { skillTemplate } from './skill-template.js';
 import { mergeJsonKey, serverEntry, type McpWrite } from '../hosts/mcp-config.js';
 import { readJsonObject } from '../hosts/config-write.js';
+import { ignoreInTrailDir } from '../notes/repo-trail.js';
+export { ignoreInTrailDir };
 import { hasGraftIndex } from '../graph/root.js';
 import type { PlannedWrite } from '../hosts/plan.js';
 import { repoWiredForTrail, type Brand } from '../brand.js';
@@ -244,16 +246,6 @@ function dropServer(path: string, names: string[]): void {
     if (Object.keys(root).length === 0) rmSync(path, { force: true });
     else writeFileSync(path, `${JSON.stringify(root, null, 2)}\n`);
   } catch { /* leave it as the user has it */ }
-}
-
-/** One line in `.trail/.gitignore`, added once. */
-export function ignoreInTrailDir(dir: string, entry: string): void {
-  const path = join(dir, '.trail', '.gitignore');
-  let text = '';
-  try { text = readFileSync(path, 'utf8'); } catch { /* new */ }
-  if (text.split('\n').some((l) => l.trim() === entry)) return;
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${text}${text && !text.endsWith('\n') ? '\n' : ''}${entry}\n`);
 }
 
 /**

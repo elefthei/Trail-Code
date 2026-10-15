@@ -1201,7 +1201,7 @@ function lexical(
     // so a query that missed everywhere still tells the caller where to look.
     note: scored.length
       ? undefined
-      : `no matching nodes — try different words, or \`${cmd("graft build")}\` if graft/ is empty${scopesHereClause(scopes ?? [])}`,
+      : `no matching nodes — try different words, or \`${cmd("graft build")}\` if the code map is empty${scopesHereClause(scopes ?? [])}`,
   };
 }
 

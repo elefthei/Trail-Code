@@ -242,7 +242,7 @@ export function relevantRetrieval(ask: AskJson, s: SessionState, cap = 3): strin
   return txt;
 }
 
-export function formatOrientation(indexMd: string, budgetBytes = 1500, staleNote?: string, notes = 0, keepsNotes = notes > 0, skills = ''): string {
+export function formatOrientation(indexMd: string, budgetBytes = 1500, staleNote?: string, notes = 0, keepsNotes = notes > 0, skills = '', mapDir = 'graft'): string {
   // Always-on directive (cached, seen turn 0) so the agent reaches for graft's
   // commands without waiting for the discretionary skill to load. This is the
   // reliable steering channel (fires every session, unlike the discretionary
@@ -265,7 +265,7 @@ export function formatOrientation(indexMd: string, budgetBytes = 1500, staleNote
     teamNotesDirective(notes, keepsNotes) +
     skills;
   const banner = staleNote ? `${staleNote}\n\n` : "";
-  return `${banner}${directive}\nrepo map (graft/INDEX.md):\n${indexMd.slice(0, budgetBytes)}`;
+  return `${banner}${directive}\nrepo map (${mapDir}/INDEX.md):\n${indexMd.slice(0, budgetBytes)}`;
 }
 
 /**

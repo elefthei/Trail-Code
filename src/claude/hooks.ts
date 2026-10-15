@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync, spawn } from 'node:child_process';
-import { join, basename, isAbsolute, resolve } from 'node:path';
+import { join, basename, isAbsolute, relative, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { readWiring } from './stats.js';
 import { formatBlastRadius, relevantRetrieval, formatOrientation, notesForPrompt, standingDirective } from './format.js';
@@ -47,7 +47,8 @@ function projectDir(input: any): string {
 }
 export function underGraft(dir: string, file: string): boolean {
   const rel = file.startsWith(dir) ? file.slice(dir.length) : file;
-  return rel.replace(/^[/\\]+/, '').replace(/\\/g, '/').startsWith('graft/');
+  const posix = rel.replace(/^[/\\]+/, '').replace(/\\/g, '/');
+  return posix.startsWith('graft/') || posix.startsWith('.trail/cache/');
 }
 /** Default budget for a graft child process invoked from a hook, matching the 8s
  * the installed hook entries carry. */
@@ -677,7 +678,8 @@ export async function main(event: string): Promise<void> {
       const skills = kept ? skillsDirective(dir, cmd('graft skills show')) : '';
       const underTrail = kept && brand() === 'trail';
       const standing = underTrail ? standingDirective(standingLearnings(dir)) + uncommittedDirective(dir) : '';
-      const orientation = formatOrientation(idx, undefined, banner, noteCount(dir), kept, skills + standing);
+      const mapDir = relative(dir, resolveContextDir(dir)).split('\\').join('/') || 'graft';
+      const orientation = formatOrientation(idx, undefined, banner, noteCount(dir), kept, skills + standing, mapDir);
       emit('SessionStart', upkeep.length ? `${upkeep.join('\n')}\n\n${orientation}` : orientation);
     } catch {
       // No INDEX.md (never built here). An upgrade nudge is still worth saying.

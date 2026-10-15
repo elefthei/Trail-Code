@@ -505,10 +505,12 @@ function targets(repo: string, opts: RetractOpts): Target[] {
   //    here can't strand the wiring half-retracted.
   if (opts.cache !== false) {
     const cache = join(repo, 'graft');
+    const trailCache = join(repo, '.trail', 'cache');
     const gitignore = join(repo, '.gitignore');
     const ignore = join(repo, '.ignore');
     for (const t of [
       { hostId: 'graph', path: cache, what: 'local graph cache', scope: 'repo', run: (a) => removeDir(cache, a) },
+      { hostId: 'graph', path: trailCache, what: 'local graph cache', scope: 'repo', run: (a) => removeDir(trailCache, a) },
       { hostId: 'graph', path: gitignore, what: 'graft/ ignore entry', scope: 'repo', run: (a) => stripIgnoreEntries(gitignore, [/^\/?graft\/?$/], a) },
       { hostId: 'graph', path: ignore, what: 'graft/ search re-admit entries', scope: 'repo', run: (a) => stripIgnoreEntries(ignore, [/^!?graft\/?$/, /^graft\/\.(cache|graph)\/?$/], a) },
     ] as Target[]) add(t);
