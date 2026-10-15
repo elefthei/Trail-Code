@@ -56,7 +56,7 @@ import { normalizePathPrefix } from "./util/paths.js";
 import { latestSession, formatSessionStats, sessionInputRate } from "./claude/session-metrics.js";
 import { listSessionIds, readSession, sessionDir } from "./claude/state.js";
 import { costLabel, listNotes, noteName, notePlace, noteTargets, readingTokens, savedByNote, commitLines, PERSONAL_SAVED_LINE, PR_SPEEDUP, SECTIONS, tokensWorthSaying, sectionLead, shortDate, tokensLabel, writeNote, type Note, mentionedFiles } from "./notes/notes.js";
-import { currentSessionCost } from "./notes/session-cost.js";
+import { aboutTerms, currentSessionCost } from "./notes/session-cost.js";
 import { beginPastRead, finishPastRead, type Finding } from "./notes/cold-start.js";
 import { beginReviewRead, finishReviewRead, type ReviewFinding } from "./notes/pr-reviews.js";
 import { currentBranch, noteAuthor, teammatesOn } from "./notes/git-facts.js";
@@ -1338,9 +1338,11 @@ async function runNoteCommand(repo: string, opts: NoteOptions): Promise<void> {
   };
   const minutes = wholeNumber(opts.minutes, "--minutes");
   const tokens = wholeNumber(opts.tokens, "--tokens");
-  // What the session spent, from the agent's own transcript when there is one;
-  // the flags win, since only the agent knows where its task began.
-  const spent = currentSessionCost(repo);
+  // What the session spent, from the agent's own transcript when there is one,
+  // counted from where the work the note names first came up; the flags win,
+  // since only the agent knows for sure where its task began.
+  const named = [...(opts.touches?.split(",").map((t) => t.trim()).filter(Boolean) ?? []), ...mentionedFiles(repo, body)];
+  const spent = currentSessionCost(repo, undefined, Date.now(), aboutTerms(body, named));
   const cost =
     minutes !== undefined || tokens !== undefined || spent
       ? { minutes: minutes ?? spent?.minutes, tokens: tokens ?? spent?.tokens }

@@ -23,7 +23,7 @@ import {
   writeNote,
   type Note,
 } from "../src/notes/notes.js";
-import { costFromTranscript } from "../src/notes/session-cost.js";
+import { aboutTerms, costFromTranscript, FALLBACK_ACTIVE_MS } from "../src/notes/session-cost.js";
 import { ensureRepoHome, repoPlace } from "../src/notes/home.js";
 import { homeEnv, tmpRepo } from "./helpers.js";
 
@@ -196,6 +196,51 @@ test("the cost carries the files the session edited since its last note, for the
     "/src/ocr-lib/rotate.py",
     "/src/extract/notebooks/rotation.ipynb",
   ]);
+});
+
+test("a note names its work by its files and specific backticked terms, not by phrases", () => {
+  const body = "## Decided\n- `dropHtmlComments` in `src/notes/pr-reviews.ts` repeats until stable.\n- Run `trail init` and `publish`, keep `repo_id`, see `git check-ignore`.\n- `main` is fine.";
+  assert.deepEqual(aboutTerms(body, ["internal/ocr/bbox.go#NormalizeBox"]), [
+    "internal/ocr/bbox.go",
+    "bbox.go",
+    "dropHtmlComments",
+    "src/notes/pr-reviews.ts",
+    "repo_id",
+  ]);
+});
+
+test("a note's cost starts at the turn where its work first came up, not at the session's start", () => {
+  const t = [
+    // An hour on something else first.
+    line({ type: "user", timestamp: at(0), message: { content: "search slack for the release" } }),
+    line({ type: "assistant", timestamp: at(5), message: { id: "s", usage: usage(0, 50_000, 1000), content: [{ type: "tool_use", id: "x", name: "Bash", input: { command: "slack search release" } }] } }),
+    line({ type: "assistant", timestamp: at(9), message: { id: "s2", usage: usage(0, 40_000, 1000), content: [] } }),
+    // The turn the learning is about: its prompt counts, then the tool call that names the file.
+    line({ type: "user", timestamp: at(10), message: { content: "why is the box rotated?" } }),
+    line({ type: "assistant", timestamp: at(11), message: { id: "w", usage: usage(0, 3000, 500), content: [{ type: "tool_use", id: "r", name: "Read", input: { file_path: "/repo/internal/ocr/bbox.go" } }] } }),
+    line({ type: "assistant", timestamp: at(14), message: { id: "w2", usage: usage(0, 2000, 500), content: [] } }),
+    // The note being saved names everything: it never counts as where the work began.
+    line({ type: "assistant", timestamp: at(15), message: { id: "n", usage: usage(0, 0, 100), content: [{ type: "tool_use", id: "n1", name: "Bash", input: { command: "trail note --title x <<'EOF'\nslack bbox.go\nEOF" } }] } }),
+  ].join("\n");
+  const now = Date.parse(at(15));
+  const whole = costFromTranscript(t, now)!;
+  const scoped = costFromTranscript(t, now, aboutTerms("see `internal/ocr/bbox.go`"))!;
+  assert.equal(whole.tokens, 51_000 + 41_000 + 3500 + 2500 + 100);
+  assert.equal(scoped.tokens, 3500 + 2500 + 100);
+  assert.equal(scoped.minutes, 5);
+  assert.equal(scoped.countedFrom, Date.parse(at(10)));
+  assert.equal(scoped.startedAt, Date.parse(at(0)), "the stretch since the last note still starts at the top");
+});
+
+test("when nothing in the transcript names the work, only the last 30 active minutes count", () => {
+  const t = Array.from({ length: 13 }, (_, i) =>
+    line({ type: "assistant", timestamp: at(i * 5), message: { id: `m${i}`, usage: usage(0, 1000, 0), content: [] } }),
+  ).join("\n");
+  const now = Date.parse(at(60));
+  assert.equal(costFromTranscript(t, now)!.minutes, 60);
+  const capped = costFromTranscript(t, now, ["nowhere/in/it.go"])!;
+  assert.equal(capped.minutes, FALLBACK_ACTIVE_MS / 60_000);
+  assert.equal(capped.tokens, 7000, "the entries at 30, 35, …, 60 minutes");
 });
 
 test("no transcript entries, no cost", () => {
