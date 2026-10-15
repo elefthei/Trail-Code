@@ -31,15 +31,3 @@ test("a learning that took under 80k tokens is credited as a faster PR instead",
   assert.match(first!, /\[(graft|trail)\] starting from this learning gets you to a PR 3x faster\./);
   assert.doesNotMatch(first!, /tokens and/);
 });
-
-test("a teammate's pushed branch on the same code is put in front of the agent once, to start its reply with", async () => {
-  const { overlapsForPrompt } = await import("../src/claude/format.js");
-  const line = "● overlap · Kumar's branch kumar/retry also changes client.go (pushed today 15:32)";
-  const ask = { query: "retry count", mode: "lexical", hits: [], overlaps: [line, "[trail] Start your reply with the overlap line above, word for word, so the user knows."] } as AskJson;
-  const s = {} as SessionState;
-  const first = overlapsForPrompt(ask, s);
-  assert.match(first!, /Start your reply with this line, word for word/);
-  assert.ok(first!.endsWith(line), "the overlap itself, and not ask's own instruction a second time");
-  assert.equal(overlapsForPrompt(ask, s), null, "not again in the same session");
-  assert.equal(overlapsForPrompt({ query: "x", mode: "lexical", hits: [] } as AskJson, {} as SessionState), null);
-});

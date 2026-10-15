@@ -3,9 +3,9 @@ import { execFileSync, spawn } from 'node:child_process';
 import { join, basename, isAbsolute, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { readWiring } from './stats.js';
-import { formatBlastRadius, relevantRetrieval, formatOrientation, notesForPrompt, overlapsForPrompt, standingDirective } from './format.js';
+import { formatBlastRadius, relevantRetrieval, formatOrientation, notesForPrompt, standingDirective } from './format.js';
 import { commitLines, standingLearnings } from '../notes/notes.js';
-import { teammatesOn } from '../notes/git-facts.js';
+import { noteAuthor, teammatesOn } from '../notes/git-facts.js';
 import { indexFreshness, staleBanner } from '../context/check.js';
 import { patchStats, readStats, acquireLock, readSession, writeSession, resolveContextDir } from './state.js';
 import { graftCliPath, claudeScriptPath } from './paths.js';
@@ -21,7 +21,7 @@ import { fitTrailServerToMachine } from '../hosts/claude-global.js';
 import { globalCopyCovers } from './hook-layers.js';
 import { NOTE_CALL } from '../notes/session-cost.js';
 import { keepsNotes, noteCount, repoPlace } from '../notes/home.js';
-import { branchesStale, refreshBranches, SESSION_REFRESH_MS } from '../notes/branches.js';
+import { branchesStale, overlapMark, readBranchCache, refreshBranches, SESSION_REFRESH_MS } from '../notes/branches.js';
 import { learningFiles } from '../notes/repo-trail.js';
 import { inWorkspace, maybeSyncInBackground } from '../cloud/workspace-sync.js';
 import { cacheDir, readJson, writeJsonAtomic } from '../util/state.js';
@@ -200,8 +200,44 @@ async function handlePostEdit(input: any, dir: string): Promise<void> {
   const file = editedFilePath(input, dir);
   if (!file || underGraft(dir, file)) return;
   patchStats(dir, { dirty: true, staleCount: checkStaleCount(dir), lastFile: basename(file) });
+  const out: string[] = [];
   const w = readWiring(dir);
-  if (w) { const br = formatBlastRadius(w, file); if (br) emit('PostToolUse', br); }
+  if (w) { const br = formatBlastRadius(w, file); if (br) out.push(br); }
+  const overlap = await editOverlap(input, dir, file);
+  if (overlap) out.push(overlap);
+  // One hook, one answer: two JSON objects on stdout would be read as neither.
+  if (out.length) emit('PostToolUse', out.join('\n\n'));
+}
+
+/** Branch-and-function pairs remembered per session, so each is said once. */
+const INJECTED_OVERLAPS_CAP = 40;
+
+/**
+ * Under trail, a teammate's open branch that changes the function this edit
+ * just changed, for the agent to read and tell the person about, each branch
+ * and function once a session. Parsing loads grammars, so it's imported only
+ * when the edited file is one some branch changes. Never throws.
+ */
+async function editOverlap(input: any, dir: string, file: string): Promise<string | null> {
+  if (brand() !== 'trail' || !keepsNotes(dir)) return null;
+  try {
+    const top = repoPlace(dir);
+    if (!top.git) return null;
+    const { functionOverlaps, editOverlapDirective } = await import('../notes/edit-overlap.js');
+    const found = await functionOverlaps(top.checkout, resolve(dir, file), input?.tool_input, noteAuthor(top.checkout));
+    if (!found.length) return null;
+    const id = input?.session_id || 'default';
+    const s = readSession(dir, id);
+    const seen = new Set(s.injectedOverlaps ?? []);
+    const fresh = found.filter((o) => o.symbols.some((x) => !seen.has(`${o.ref} ${x.id}`)));
+    if (!fresh.length) return null;
+    s.injectedOverlaps = [...seen, ...fresh.flatMap((o) => o.symbols.map((x) => `${o.ref} ${x.id}`))].slice(-INJECTED_OVERLAPS_CAP);
+    writeSession(dir, id, s);
+    const base = readBranchCache(top.checkout)?.base ?? 'origin/main';
+    return fresh.slice(0, 2).map((o) => editOverlapDirective(o, base, tag(), overlapMark())).join('\n\n');
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -653,8 +689,7 @@ export async function main(event: string): Promise<void> {
     if (agent) s.perAgentQuery[agent] = prompt;
     // Learnings first: what an earlier session worked out matters more than where code is.
     const notes = brand() === 'trail' ? notesForPrompt(ask, s) : null;
-    const overlaps = brand() === 'trail' ? overlapsForPrompt(ask, s) : null;
-    const txt = [notes, overlaps, relevantRetrieval(ask, s)].filter(Boolean).join('\n\n');
+    const txt = [notes, relevantRetrieval(ask, s)].filter(Boolean).join('\n\n');
     if (txt) emit('UserPromptSubmit', txt);
     writeSession(dir, id, s);
   }

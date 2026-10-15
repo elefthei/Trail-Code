@@ -64,7 +64,7 @@ npm install -g @trailhq/trail-code && trail init
 | Greps and opens file after file to find the code it needs | Gets the right files and functions with your prompt |
 | Re-explores code a teammate already figured out last week | Starts from their learning: what they decided, what they ruled out, what to watch out for |
 | Undoes a teammate's decision, because it never knew about it | `trail check` flags it before the PR, quoting who decided it and why |
-| Finds out at merge time that a teammate changed the same file | Opens its reply with the overlap: `● overlap · Kumar's branch kumar/retry also changes client.go` |
+| Finds out at merge time that a teammate changed the same code | Says so right after it edits code a teammate's open branch also changes, and whether the two clash |
 | Has to be told the same things every session | Starts from what you've told it before: `trail init` finds what you said more than once in your past sessions |
 | You write and update CLAUDE.md by hand | Learnings are saved from your conversations, in files you can read |
 
@@ -226,10 +226,10 @@ checking 1 changed file against 1 learning and 0 skills
 
 Kumar's Claude explains the override in the commit.
 
-**4. Anirudh asks about the same code again.** Kumar's branch isn't merged yet, but Anirudh's Claude opens its reply with:
+**4. Anirudh edits the same constant.** Kumar's branch isn't merged yet. Right after the edit, Anirudh's Claude reads Kumar's change and says something like:
 
 ```text
-● overlap · Kumar's branch kumar/retry also changes client.go (pushed today 15:32)
+🔀 trail · Kumar is also changing defaultRetryMax on kumar/retry. He raises it to 10 and you're lowering it, so the two clash.
 ```
 
 None of this needs a server. Learnings travel through git, like the code they are about.
@@ -612,7 +612,7 @@ When Claude Code is selected (it is by default), it gets more than the skill fil
 - **auto-sync**: every query brings the graph up to date first, so an answer always describes the code as it is right now, uncommitted edits included. A query refreshes only what it reads; the markdown under `graft/` is refreshed by the background rebuild at the end of a turn that touched code. Both are structural and `$0`; auto-sync never calls the LLM on its own
 - **context on tap**: each prompt pulls in the matching nodes and the learnings left on that code; editing a file surfaces what depends on it ("blast radius"); new sessions start with the repo map and how many learnings there are
 - **the ask to save a learning**: after a turn of real digging with nothing saved, Claude is asked once a session to save one
-- **overlap with teammates**: at session start, and every few minutes, it reads which files teammates' recent pushed branches change; when one changes the code your prompt is about, Claude says so first
+- **overlap with teammates**: at session start, and every few minutes, it reads what teammates' open branches change, skipping any already merged or closed; when Claude edits a function or constant one of them also changes, it reads their change and tells you whether the two clash
 
 <p align="center">
   <img src="assets/graft-hook-blast-radius-demo.gif" alt="The post-edit hook: editing node-file.ts prints its blast radius (who depends on it) inline, the statusline flips stale → syncing → synced on its own, and the same dependents light up in the viewer" width="820"/>

@@ -338,10 +338,10 @@ program
 // Hidden: spawned detached by maybeRefreshBranches.
 program
   .command("_trail-branches", { hidden: true })
-  .description("internal: fetch, then note which files teammates' pushed branches change and the learnings they carry")
+  .description("internal: fetch, then note which files teammates' open branches change and the learnings they carry")
   .argument("[dir]", "target repo directory", ".")
   .action((dir: string) => {
-    refreshBranches(resolve(dir));
+    refreshBranches(resolve(dir), { prs: true });
   });
 
 program
@@ -723,11 +723,11 @@ function pointerFile(pointer: string): string {
 }
 
 /**
- * After `ask`, under trail: which shown learnings are a teammate's, which
- * teammates' pushed branches change the files the answer points into, and the
+ * After `ask`, under trail: which shown learnings are a teammate's, and the
  * shown learnings recorded as a use, which is what the team page counts as
  * reuse. Then the background upkeep that keeps branches and the workspace
- * current. Spawns no git itself.
+ * current. Spawns no git itself. Teammates' branches come up after an edit
+ * instead, once there's a function to compare (notes/edit-overlap.ts).
  */
 function afterAsk(r: AskResult, repo: string): void {
   if (!r.notesChecked) return;
@@ -735,11 +735,6 @@ function afterAsk(r: AskResult, repo: string): void {
   maybeRefreshBranches(repo);
   const me = noteAuthor(repo);
   const files = [...new Set(r.hits.map((h) => pointerFile(h.pointer)))];
-  const overlaps = overlapsWith(repo, files, me).slice(0, 2);
-  if (overlaps.length) {
-    r.overlaps = overlaps.map((o) => formatOverlap(o));
-    if (!process.stdout.isTTY) r.overlaps.push(`${tag()} Start your reply with the overlap line${overlaps.length === 1 ? "" : "s"} above, word for word, so the user knows.`);
-  }
   const shown = r.notes ?? [];
   if (shown.length) {
     for (const h of shown) h.note.teammate = !!h.note.author && !!me && h.note.author !== me;

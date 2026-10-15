@@ -95,8 +95,6 @@ export interface AskJson {
   coverageStrong?: number;
   /** Notes from earlier sessions that bear on the query, when this repo keeps them. */
   notes?: NoteHit[];
-  /** Teammates' pushed branches that change the files the hits point into, one line each. */
-  overlaps?: string[];
 }
 
 /** How many notes one prompt may bring in. */
@@ -124,23 +122,6 @@ export function notesForPrompt(ask: AskJson, s: SessionState, cap = PROMPT_NOTES
     `(e.g. "📝 Started from Anirudh's learning · ${learningCredit(fresh)}"):\n` +
     formatNoteHits(fresh).join('\n').trimEnd() +
     (saved ? `\n${saved}` : '')
-  );
-}
-
-/**
- * Teammates' pushed branches that change the code this prompt is about, each
- * at most once a session, for the agent to mention: two people on the same
- * thing is worth knowing before either goes further.
- */
-export function overlapsForPrompt(ask: AskJson, s: SessionState): string | null {
-  const seen = new Set(s.injectedOverlaps ?? []);
-  // The overlap lines themselves; `ask`'s own instruction to the agent is restated below.
-  const fresh = (ask.overlaps ?? []).filter((o) => o.startsWith('●') && !seen.has(o));
-  if (!fresh.length) return null;
-  s.injectedOverlaps = [...(s.injectedOverlaps ?? []), ...fresh].slice(-INJECTED_POINTERS_CAP);
-  return (
-    `${tag()} a teammate's pushed branch changes the same code. Start your reply with ${fresh.length === 1 ? 'this line' : 'these lines'}, word for word, so the user knows before going further:\n` +
-    fresh.join('\n')
   );
 }
 
