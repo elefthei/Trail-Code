@@ -357,3 +357,14 @@ test('the learnings picker starts with every learning ticked, and enter keeps th
   state = reducePicker(state, 'all');
   assert.deepEqual(keptLearnings(state), [0, 1, 2], 'a ticks every one back');
 });
+
+test('a learning from PR reviews says how many PRs flagged it, in the same list as the session ones', () => {
+  const state = learningsPickerState([
+    { title: 'Use pnpm, not npm', forTeam: true, sessions: 6 },
+    { title: 'Return a 500 when db.query fails', forTeam: true, prs: 3 },
+  ]);
+  assert.deepEqual(keptLearnings(state), [0, 1]);
+  const shown = renderPicker(state, false, { title: 'keep:' });
+  assert.match(shown, /\[x\] Use pnpm, not npm\s+for your team · told Claude in 6 sessions/);
+  assert.match(shown, /\[x\] Return a 500 when db\.query fails\s+for your team · flagged in review on 3 PRs/);
+});

@@ -377,15 +377,23 @@ export function hasClaude(home?: string): boolean {
  * servers, no slash commands, nothing saved as a session (so this run never
  * shows up as a past session), from a scratch folder so no repo's CLAUDE.md or
  * hooks load. `TRAIL_NO_HOOKS` keeps trail's own user-level hooks quiet too.
+ * Past sessions by default; the PR review read brings its own system prompt
+ * and schema, with `findings` at the top.
  */
-function askClaude(bin: string, prompt: string, model: string, timeoutMs: number): Promise<{ findings: RawFinding[]; costUsd?: number } | null> {
+export function askClaude<T = RawFinding>(
+  bin: string,
+  prompt: string,
+  model: string,
+  timeoutMs: number,
+  ask: { system: string; schema: object } = { system: SYSTEM, schema: SCHEMA },
+): Promise<{ findings: T[]; costUsd?: number } | null> {
   return new Promise((done) => {
     const args = [
       "-p",
       "--model", model,
       "--output-format", "json",
-      "--json-schema", JSON.stringify(SCHEMA),
-      "--system-prompt", SYSTEM,
+      "--json-schema", JSON.stringify(ask.schema),
+      "--system-prompt", ask.system,
       "--tools", "",
       "--strict-mcp-config",
       "--no-session-persistence",
@@ -408,7 +416,7 @@ function askClaude(bin: string, prompt: string, model: string, timeoutMs: number
     child.on("close", () => {
       clearTimeout(timer);
       try {
-        const r = JSON.parse(out) as { is_error?: boolean; structured_output?: { findings?: RawFinding[] }; total_cost_usd?: number };
+        const r = JSON.parse(out) as { is_error?: boolean; structured_output?: { findings?: T[] }; total_cost_usd?: number };
         if (r.is_error || !r.structured_output) return done(null);
         done({ findings: r.structured_output.findings ?? [], costUsd: r.total_cost_usd });
       } catch {
@@ -424,12 +432,42 @@ function askClaude(bin: string, prompt: string, model: string, timeoutMs: number
 /* Keeping only what's really there                                           */
 /* -------------------------------------------------------------------------- */
 
-function norm(s: string): string {
+export function norm(s: string): string {
   return s
     .toLowerCase()
     .replace(/[“”"'`‘’]/g, "")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
+}
+
+/** Where a finding's quotes can be: one past session's messages, or one PR's review comments. */
+export interface QuoteSource {
+  id: string;
+  /** ISO time, for newest first. */
+  at: string;
+  /** What was said there, each through norm(). */
+  said: string[];
+}
+
+/**
+ * The sources a finding's quotes really are in, newest first, and the quotes
+ * that were found. A quote filed under the wrong source still counts for the
+ * one it's in; a quote under three words proves nothing.
+ */
+export function placeQuotes(evidence: { cited?: QuoteSource; quote?: string }[], sources: QuoteSource[]): { places: QuoteSource[]; quotes: string[] } {
+  const found = new Map<string, QuoteSource>();
+  const quotes: string[] = [];
+  for (const ev of evidence) {
+    const q = norm(ev.quote ?? "");
+    if (q.split(" ").length < 3) continue;
+    const has = (x: QuoteSource) => x.said.some((w) => w.includes(q));
+    // Misfiled: the source it's really in, one not counted yet when there is one.
+    const hit = ev.cited && has(ev.cited) ? ev.cited : (sources.find((x) => has(x) && !found.has(x.id)) ?? sources.find(has));
+    if (!hit) continue;
+    found.set(hit.id, hit);
+    quotes.push(ev.quote!.trim());
+  }
+  return { places: [...found.values()].sort((a, b) => b.at.localeCompare(a.at)), quotes };
 }
 
 /**
@@ -438,34 +476,22 @@ function norm(s: string): string {
  * counts for the session it's in.
  */
 export function verify(raw: RawFinding[], sessions: PastSession[], ids: Map<string, string>): Finding[] {
-  const said = sessions.map((s) => ({ s, words: s.prompts.map((p) => norm(p.text)) }));
-  const byId = new Map(said.map((x) => [x.s.id, x]));
+  const sources = sessions.map((s) => ({ id: s.id, at: s.at, said: s.prompts.map((p) => norm(p.text)) }));
+  const byId = new Map(sources.map((x) => [x.id, x]));
   const out: Finding[] = [];
   for (const f of raw) {
     const title = f.title?.trim();
     const body = f.body?.trim();
     if (!title || !body) continue;
-    const found = new Map<string, PastSession>();
-    const quotes: string[] = [];
-    for (const ev of f.evidence ?? []) {
-      const q = norm(ev.quote ?? "");
-      if (q.split(" ").length < 3) continue;
-      const cited = byId.get(ids.get(ev.session?.trim() ?? "") ?? "");
-      const has = (x: (typeof said)[number]) => x.words.some((w) => w.includes(q));
-      // Misfiled: the session it's really in, one not counted yet when there is one.
-      const hit = cited && has(cited) ? cited : (said.find((x) => has(x) && !found.has(x.s.id)) ?? said.find(has));
-      if (!hit) continue;
-      found.set(hit.s.id, hit.s);
-      quotes.push(ev.quote!.trim());
-    }
-    if (found.size < 2) continue;
-    const inOrder = [...found.values()].sort((a, b) => b.at.localeCompare(a.at));
+    const evidence = (f.evidence ?? []).map((ev) => ({ cited: byId.get(ids.get(ev.session?.trim() ?? "") ?? ""), quote: ev.quote }));
+    const { places, quotes } = placeQuotes(evidence, sources);
+    if (places.length < 2) continue;
     out.push({
       title: scrub(title).slice(0, 80),
       for: f.for === "you" ? "you" : "team",
       body: scrub(body),
-      sessions: inOrder.map((s) => s.id),
-      last: inOrder[0]!.at.slice(0, 10),
+      sessions: places.map((s) => s.id),
+      last: places[0]!.at.slice(0, 10),
       quotes,
     });
   }
@@ -545,7 +571,7 @@ export function beginPastRead(repo: string, env: NodeJS.ProcessEnv = process.env
     if (env.TRAIL_NO_FETCH === "1" || readJson<{ at?: number }>(readMark(repo))?.at) return null;
     const sessions = pastSessions(repo);
     if (sessions.length < 2) {
-      track("cold_start", { outcome: "no_sessions", sessions_bucket: countBucket(sessions.length) }, { repo });
+      track("cold_start", { source: "sessions", outcome: "no_sessions", sessions_bucket: countBucket(sessions.length) }, { repo });
       return null;
     }
     const read: PastRead = { sessions: sessions.length, started: Date.now(), done: false, result: findLearnings(repo, { sessions }) };
@@ -596,6 +622,7 @@ export async function finishPastRead(
   track(
     "cold_start",
     {
+      source: "sessions",
       outcome,
       sessions_bucket: countBucket(result.sessions),
       offered_bucket: countBucket(result.findings.length),

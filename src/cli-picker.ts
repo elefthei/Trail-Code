@@ -407,12 +407,14 @@ async function drivePicker(initial: PickerState, title?: string | null): Promise
   }
 }
 
-/** One thing `trail init` found the person kept telling Claude, as the picker shows it. */
+/** One thing `trail init` found the person kept telling Claude, or reviewers kept flagging, as the picker shows it. */
 export interface LearningChoice {
   title: string;
   forTeam: boolean;
   /** Past sessions it was said in. */
-  sessions: number;
+  sessions?: number;
+  /** Merged PRs reviewers flagged it on, for one from PR reviews. */
+  prs?: number;
 }
 
 /** One row per learning init found, every one ticked: the person unticks what Claude shouldn't follow. */
@@ -423,7 +425,7 @@ export function learningsPickerState(items: LearningChoice[]): PickerState {
     kind: 'host' as const,
     detected: true,
     hasGlobal: false,
-    summary: `${it.forTeam ? 'for your team' : 'just for you'} · told Claude in ${it.sessions} sessions`,
+    summary: `${it.forTeam ? 'for your team' : 'just for you'} · ${it.prs ? `flagged in review on ${it.prs} PRs` : `told Claude in ${it.sessions ?? 0} sessions`}`,
   }));
   return { rows, cursor: 0, checked: new Set(rows.map((r) => r.id)), done: false, aborted: false };
 }
@@ -435,7 +437,11 @@ export function keptLearnings(state: PickerState): number[] {
 
 /** Ask which learnings to keep: their indexes, or null when the person cancelled. */
 export async function pickLearnings(items: LearningChoice[]): Promise<number[] | null> {
-  const title = `${brand()} init — you told Claude these more than once. Keep the ones it should follow:`;
+  const fromReviews = items.filter((it) => it.prs).length;
+  const title =
+    fromReviews === 0
+      ? `${brand()} init — you told Claude these more than once. Keep the ones it should follow:`
+      : `${brand()} init — ${fromReviews === items.length ? 'reviewers flagged these on more than one PR' : 'these came up more than once in your sessions and PR reviews'}. Keep the ones Claude should follow:`;
   const state = await drivePicker(learningsPickerState(items), title);
   return state ? keptLearnings(state) : null;
 }
