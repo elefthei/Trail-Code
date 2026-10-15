@@ -8,8 +8,8 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
-import { digest, ownWords, readSession, scrub, sessionFiles, verify, type PastSession } from "../src/notes/cold-start.js";
+import { basename, dirname, join } from "node:path";
+import { claudeBin, digest, ownWords, readSession, scrub, sessionFiles, verify, type PastSession } from "../src/notes/cold-start.js";
 import { standingDirective } from "../src/claude/format.js";
 import { commitLines, namesLabel, parseNote, PERSONAL_SAVED_LINE, standingLearnings } from "../src/notes/notes.js";
 import { teammatesOn } from "../src/notes/git-facts.js";
@@ -259,4 +259,44 @@ test("trail init reads past sessions by itself and saves what came up twice, onc
   const again = initRun(repo, home, bin);
   assert.equal(again.status, 0, again.err);
   assert.doesNotMatch(again.err, /reading your/, "read once per repo");
+});
+
+/* ---- finding Claude Code when it isn't on PATH ---- */
+
+const exe = process.platform === "win32" ? "claude.exe" : "claude";
+const extCopy = (editor: string, folder: string) => join(editor, "extensions", folder, "resources", "native-binary", exe);
+
+/** A fake home with an empty file at each of `paths`. */
+function homeWith(...paths: string[]): string {
+  const home = mkdtempSync(join(tmpdir(), "claude-bin-home-"));
+  for (const p of paths) {
+    mkdirSync(join(home, dirname(p)), { recursive: true });
+    writeFileSync(join(home, p), "");
+  }
+  return home;
+}
+
+test("claudeBin uses claude on PATH when it's there", () => {
+  assert.equal(claudeBin(homeWith(extCopy(".vscode", "anthropic.claude-code-2.1.289-darwin-arm64")), () => true), "claude");
+});
+
+test("claudeBin finds the newest VS Code or Cursor extension copy when claude isn't on PATH", () => {
+  const newest = extCopy(".cursor", "anthropic.claude-code-2.1.296-darwin-arm64");
+  const home = homeWith(
+    extCopy(".vscode", "anthropic.claude-code-2.1.99-darwin-arm64"),
+    extCopy(".vscode", "anthropic.claude-code-2.1.289-darwin-arm64"),
+    newest,
+  );
+  assert.equal(claudeBin(home, () => false), join(home, newest));
+});
+
+test("claudeBin prefers a standalone install to an extension's copy", () => {
+  const home = homeWith(join(".local", "bin", exe), extCopy(".vscode", "anthropic.claude-code-2.1.289-darwin-arm64"));
+  assert.equal(claudeBin(home, () => false), join(home, ".local", "bin", exe));
+});
+
+test("claudeBin skips an extension folder without the binary, and is null with nothing to run", () => {
+  const home = homeWith();
+  mkdirSync(join(home, ".vscode", "extensions", "anthropic.claude-code-2.1.300-darwin-arm64"), { recursive: true });
+  assert.equal(claudeBin(home, () => false), null);
 });
